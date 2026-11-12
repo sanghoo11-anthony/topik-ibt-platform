@@ -1,0 +1,36 @@
+# Dependencies
+node_modules
+node_modules/
+**/node_modules
+**/node_modules/
+venv
+venv/
+**/venv
+**/venv/
+.venv/
+
+# Next.js build outputs
+.next/
+**/.next/
+out/
+**/out/
+build/
+
+# Python cache
+__pycache__/
+**/__pycache__/
+*.py[cod]
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# macOS & exFAT metadata files
+.DS_Store
+._*
+**/._*
+
+# Logs & caches
+*.log
+*.tsbuildinfo

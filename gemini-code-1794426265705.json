@@ -1,0 +1,21 @@
+{
+  "question_id": "TOPIK-II-91-R-13",
+  "test_type": "TOPIK_II",
+  "section": "READING",
+  "difficulty_level": 3,
+  "question_type": "MULTIPLE_CHOICE",
+  "passage": "(가) 그러나 무조건 잠을 줄이는 것은 건강에 해롭다.\n(나) 현대인들은 바쁜 일상 속에서 수면 시간을 줄이곤 한다.\n(다) 충분한 수면을 취해야 면역력이 유지되고 집중력도 높아진다.\n(라) 따라서 건강을 지키려면 하루 7시간 이상의 숙면이 필요하다.",
+  "question_text": "다음 문장을 논리적 순서에 맞게 배열한 것을 고르십시오.",
+  "options": [
+    { "index": 1, "text": "(나) - (가) - (다) - (라)" },
+    { "index": 2, "text": "(나) - (라) - (가) - (다)" },
+    { "index": 3, "text": "(다) - (가) - (나) - (라)" },
+    { "index": 4, "text": "(다) - (라) - (가) - (나)" }
+  ],
+  "correct_answer": 1,
+  "score": 2,
+  "explanation_multilingual": {
+    "ko": "(나)에서 일반적인 문제 현상을 제시한 후, (가)의 접속부사 '그러나'로 문제점을 지적하고, (다)에서 수면의 중요성을 설명한 뒤, (라)의 '따라서'로 결론을 짓는 흐름이 자연스럽습니다.",
+    "en": "The logical sequence starts with (나) stating the general phenomenon, followed by (가) with 'however', explaining the reason in (다), and concluding with (라) 'therefore'."
+  }
+}
