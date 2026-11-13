@@ -381,7 +381,9 @@ export default function TopikPlatformApp() {
               korean_definition:
                 foundCurated?.korean_definition ||
                 `'${q}'에 대한 한국어기초사전 뜻풀이입니다.`,
-              translated_word: trans ? trans[0] : `${q} (${selectedLanguage.toUpperCase()})`,
+              translated_word: trans
+                ? trans[0]
+                : `${q} (${selectedLanguage.toUpperCase()})`,
               translated_definition: trans
                 ? trans[1]
                 : `Multilingual definition for '${q}' in ${selectedLanguage.toUpperCase()}.`,
@@ -519,10 +521,10 @@ export default function TopikPlatformApp() {
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
-      {/* ================= GLOBAL TOP NAVIGATION BAR (Hidden in Exam/Writing Workspace to prevent covering content!) ================= */}
+      {/* ================= GLOBAL TOP NAVIGATION BAR ================= */}
       {!isWorkspaceMode && (
         <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
-          <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-4 px-6 py-3">
+          <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3 px-6 py-3">
             {/* Left: Brand Logo */}
             <button
               type="button"
@@ -626,10 +628,11 @@ export default function TopikPlatformApp() {
               </button>
             </nav>
 
-            {/* Right: Language Selector */}
-            <div className="flex flex-wrap items-center gap-3">
+            {/* Right: Language Dropdown Stack + Exam & Target Level Dropdown Stack Side-by-Side */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* 1. Language Selector Dropdown (Stack) */}
               <div className="flex items-center gap-2 rounded-xl border-2 border-blue-200 bg-blue-50/60 px-3 py-1.5 text-xs font-semibold text-slate-700">
-                <Globe className="h-4 w-4 text-blue-600" />
+                <Globe className="h-4 w-4 shrink-0 text-blue-600" />
                 <select
                   aria-label="Select Language"
                   value={selectedLanguage}
@@ -643,6 +646,48 @@ export default function TopikPlatformApp() {
                   ))}
                 </select>
               </div>
+
+              {/* 2. Exam & Target Level (1급~6급) Selector Dropdown (Stack) right next to Language! */}
+              <div className="flex items-center gap-2 rounded-xl border-2 border-indigo-200 bg-indigo-50/70 px-3 py-1.5 text-xs font-semibold text-slate-700">
+                <Award className="h-4 w-4 shrink-0 text-indigo-600" />
+                <select
+                  aria-label="응시할 시험 및 목표 급수 선택"
+                  value={targetLevel}
+                  onChange={(e) => setTargetLevel(Number(e.target.value))}
+                  className="cursor-pointer bg-transparent font-bold text-indigo-950 focus:outline-none"
+                >
+                  <optgroup label="TOPIK I (초급 · 1~2급 · 200점 만점)">
+                    <option value={1}>
+                      TOPIK I · {formatLevelLabel(1)} 목표 (80{t.pointsOrAbove})
+                    </option>
+                    <option value={2}>
+                      TOPIK I · {formatLevelLabel(2)} 목표 (140{t.pointsOrAbove})
+                    </option>
+                  </optgroup>
+                  <optgroup label="TOPIK II (중·고급 · 3~6급 · 300점 만점)">
+                    <option value={3}>
+                      TOPIK II · {formatLevelLabel(3)} 목표 (120{t.pointsOrAbove})
+                    </option>
+                    <option value={4}>
+                      TOPIK II · {formatLevelLabel(4)} 목표 (150{t.pointsOrAbove})
+                    </option>
+                    <option value={5}>
+                      TOPIK II · {formatLevelLabel(5)} 목표 (190{t.pointsOrAbove})
+                    </option>
+                    <option value={6}>
+                      TOPIK II · {formatLevelLabel(6)} 목표 (230{t.pointsOrAbove})
+                    </option>
+                  </optgroup>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => startExamForTargetLevel(targetLevel)}
+                  className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-[11px] font-extrabold text-white shadow-sm transition hover:bg-indigo-700"
+                >
+                  <Play className="h-3 w-3 fill-current" />
+                  <span>시험 시작</span>
+                </button>
+              </div>
             </div>
           </div>
         </header>
@@ -650,150 +695,8 @@ export default function TopikPlatformApp() {
 
       {/* ================= VIEW 1: HOME LANDING & FEATURE HUB ================= */}
       {activeMenu === "home" && (
-        <main className="mx-auto w-full max-w-[1440px] flex-1 space-y-8 px-6 py-8">
-          {/* 1. TOP SECTION: Interactive TOPIK Exam & Target Level (1급~6급) Selector */}
-          <section className="rounded-3xl border-2 border-blue-200 bg-white p-6 shadow-md sm:p-8">
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
-              <div>
-                <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-100 px-3 py-1 text-xs font-extrabold text-blue-800">
-                  <Award className="h-3.5 w-3.5" />
-                  {t.levelSelectorTag}
-                </span>
-                <h2 className="mt-2 text-2xl font-extrabold text-slate-900 sm:text-3xl">
-                  {t.levelSelectorTitle}
-                </h2>
-                <p className="mt-1 text-xs text-slate-600 sm:text-sm">
-                  {t.levelSelectorDesc}
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => startExamForTargetLevel(targetLevel)}
-                className="flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-xs font-extrabold text-white shadow-md shadow-blue-600/20 transition hover:bg-blue-700 sm:text-sm"
-              >
-                <Play className="h-4 w-4 fill-current" />
-                <span>
-                  [{targetLevel <= 2 ? "TOPIK I" : "TOPIK II"} ·{" "}
-                  {formatLevelLabel(targetLevel)}] {t.startSelectedLevelBtn}
-                </span>
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-              {/* TOPIK I (Levels 1-2) Selectable Group */}
-              <div
-                className={`rounded-2xl border-2 p-5 transition lg:col-span-5 ${
-                  targetLevel <= 2
-                    ? "border-blue-500 bg-blue-50/40"
-                    : "border-slate-200 bg-slate-50/70"
-                }`}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-base font-extrabold text-slate-900">
-                    {t.topik1Title}
-                  </span>
-                  <span className="rounded-lg bg-white px-2.5 py-1 text-xs font-bold text-blue-600 shadow-sm">
-                    {t.topik1Meta}
-                  </span>
-                </div>
-
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  {TOPIK_I_LEVELS.map(({ level, cutoff }) => {
-                    const isSelected = targetLevel === level;
-                    return (
-                      <button
-                        key={level}
-                        type="button"
-                        onClick={() => setTargetLevel(level)}
-                        className={`flex flex-col items-start justify-between rounded-2xl border-2 p-4 text-left transition ${
-                          isSelected
-                            ? "border-blue-600 bg-blue-600 text-white shadow-md"
-                            : "border-slate-200 bg-white text-slate-800 hover:border-blue-400"
-                        }`}
-                      >
-                        <div className="flex w-full items-center justify-between">
-                          <span className="text-lg font-extrabold">
-                            {formatLevelLabel(level)}
-                          </span>
-                          {isSelected && (
-                            <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold text-white">
-                              ✓ {t.selectedBadge}
-                            </span>
-                          )}
-                        </div>
-                        <div
-                          className={`mt-2 font-mono text-sm font-bold ${
-                            isSelected ? "text-blue-100" : "text-blue-600"
-                          }`}
-                        >
-                          {cutoff}
-                          {t.pointsOrAbove}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* TOPIK II (Levels 3-6) Selectable Group */}
-              <div
-                className={`rounded-2xl border-2 p-5 transition lg:col-span-7 ${
-                  targetLevel >= 3
-                    ? "border-indigo-500 bg-indigo-50/40"
-                    : "border-slate-200 bg-slate-50/70"
-                }`}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-base font-extrabold text-indigo-950">
-                    {t.topik2Title}
-                  </span>
-                  <span className="rounded-lg bg-white px-2.5 py-1 text-xs font-bold text-indigo-700 shadow-sm">
-                    {t.topik2Meta}
-                  </span>
-                </div>
-
-                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  {TOPIK_II_LEVELS.map(({ level, cutoff }) => {
-                    const isSelected = targetLevel === level;
-                    return (
-                      <button
-                        key={level}
-                        type="button"
-                        onClick={() => setTargetLevel(level)}
-                        className={`flex flex-col items-start justify-between rounded-2xl border-2 p-4 text-left transition ${
-                          isSelected
-                            ? "border-indigo-600 bg-indigo-600 text-white shadow-md"
-                            : "border-slate-200 bg-white text-slate-800 hover:border-indigo-400"
-                        }`}
-                      >
-                        <div className="flex w-full items-center justify-between">
-                          <span className="text-lg font-extrabold">
-                            {formatLevelLabel(level)}
-                          </span>
-                          {isSelected && (
-                            <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                              ✓
-                            </span>
-                          )}
-                        </div>
-                        <div
-                          className={`mt-2 font-mono text-sm font-bold ${
-                            isSelected ? "text-indigo-100" : "text-indigo-600"
-                          }`}
-                        >
-                          {cutoff}
-                          {t.pointsOrAbove}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* 2. Hero Section */}
+        <main className="mx-auto w-full max-w-[1440px] flex-1 space-y-8 px-6 py-6">
+          {/* 1. Hero Section (Directly at top of Home now that Exam/Level selector is in the top bar next to Language!) */}
           <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 p-8 text-white shadow-xl sm:p-10">
             <div className="relative z-10 grid grid-cols-1 items-center gap-8 lg:grid-cols-12">
               <div className="space-y-4 lg:col-span-7">
@@ -817,11 +720,14 @@ export default function TopikPlatformApp() {
                 <div className="flex flex-wrap items-center gap-3 pt-2">
                   <button
                     type="button"
-                    onClick={() => startMockExamAtQuestion(0, "exam", "ALL")}
+                    onClick={() => startExamForTargetLevel(targetLevel)}
                     className="flex items-center gap-2 rounded-2xl bg-blue-500 px-6 py-3 text-sm font-extrabold text-white shadow-lg shadow-blue-500/25 transition hover:bg-blue-400"
                   >
                     <Play className="h-4 w-4 fill-current" />
-                    <span>{t.heroStartExamBtn} ({questions.length}문항)</span>
+                    <span>
+                      [{targetLevel <= 2 ? "TOPIK I" : "TOPIK II"} ·{" "}
+                      {formatLevelLabel(targetLevel)}] 맞춤 모의고사 시작
+                    </span>
                   </button>
 
                   <button
@@ -904,7 +810,7 @@ export default function TopikPlatformApp() {
             </div>
           </section>
 
-          {/* 3. Main Feature Selection Cards */}
+          {/* 2. Main Feature Selection Cards */}
           <section className="space-y-4">
             <div className="flex flex-wrap items-end justify-between gap-2">
               <div>
@@ -1140,7 +1046,7 @@ export default function TopikPlatformApp() {
       {/* ================= VIEW 2 & 3: IBT MOCK EXAM & WRITING WORKSPACE (ULTRA-COMPACT SINGLE BAR + NO-SCROLL SPLIT VIEW) ================= */}
       {(activeMenu === "exam" || activeMenu === "writing") && (
         <div className="flex flex-1 flex-col">
-          {/* Ultra-Slim Single-Line Top Bar (Replaces bulky header + sub-toolbar so Writing Grid is never covered!) */}
+          {/* Ultra-Slim Single-Line Top Bar */}
           <div className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
             <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-2 px-4 py-2">
               {/* Left: Back Home + Compact Section Filter Pills */}
@@ -1233,8 +1139,8 @@ export default function TopikPlatformApp() {
                 })}
               </div>
 
-              {/* Right: Timer + Language + Palette + Submit */}
-              <div className="flex items-center gap-1.5">
+              {/* Right: Timer + Language Stack + Target Level Stack + Palette + Submit */}
+              <div className="flex flex-wrap items-center gap-1.5">
                 <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1">
                   <Clock className="h-3.5 w-3.5 text-blue-600" />
                   <span className="font-mono text-xs font-extrabold text-slate-900">
@@ -1253,7 +1159,9 @@ export default function TopikPlatformApp() {
                   </button>
                 </div>
 
+                {/* Language Selector Dropdown */}
                 <div className="flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50/60 px-2 py-1 text-[11px] font-bold text-slate-800">
+                  <Globe className="h-3 w-3 text-blue-600" />
                   <select
                     aria-label="Select Language"
                     value={selectedLanguage}
@@ -1265,6 +1173,28 @@ export default function TopikPlatformApp() {
                         {lang.flag} {lang.label}
                       </option>
                     ))}
+                  </select>
+                </div>
+
+                {/* Exam & Target Level Selector Dropdown right next to Language! */}
+                <div className="flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50/70 px-2 py-1 text-[11px] font-bold text-indigo-950">
+                  <Award className="h-3 w-3 text-indigo-600" />
+                  <select
+                    aria-label="응시 시험 및 목표 급수 선택"
+                    value={targetLevel}
+                    onChange={(e) => setTargetLevel(Number(e.target.value))}
+                    className="cursor-pointer bg-transparent font-bold text-indigo-950 focus:outline-none"
+                  >
+                    <optgroup label="TOPIK I (초급 · 1~2급)">
+                      <option value={1}>TOPIK I · {formatLevelLabel(1)}</option>
+                      <option value={2}>TOPIK I · {formatLevelLabel(2)}</option>
+                    </optgroup>
+                    <optgroup label="TOPIK II (중·고급 · 3~6급)">
+                      <option value={3}>TOPIK II · {formatLevelLabel(3)}</option>
+                      <option value={4}>TOPIK II · {formatLevelLabel(4)}</option>
+                      <option value={5}>TOPIK II · {formatLevelLabel(5)}</option>
+                      <option value={6}>TOPIK II · {formatLevelLabel(6)}</option>
+                    </optgroup>
                   </select>
                 </div>
 
@@ -1392,7 +1322,7 @@ export default function TopikPlatformApp() {
                   </div>
                 </div>
 
-                {/* Question Prompt shown right above the Graph/Passage on Left Pane for Writing so user never has to look away */}
+                {/* Question Prompt shown right above the Graph/Passage on Left Pane */}
                 <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3">
                   <h2 className="text-sm font-extrabold leading-snug text-slate-900 sm:text-base">
                     {currentQuestion.prompt_text}
@@ -1541,7 +1471,7 @@ export default function TopikPlatformApp() {
               </div>
             </section>
 
-            {/* RIGHT PANE (50%): Multiple Choice Options OR Wongoji Editor (Visible side-by-side with Left Pane without vertical scroll!) */}
+            {/* RIGHT PANE (50%): Multiple Choice Options OR Wongoji Editor */}
             <section className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:sticky lg:top-12 lg:col-span-6 lg:max-h-[calc(100vh-3.5rem)] lg:overflow-y-auto">
               <div className="space-y-4">
                 {currentQuestion.question_type === "MULTIPLE_CHOICE" ? (
