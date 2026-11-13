@@ -1364,7 +1364,7 @@ export default function TopikPlatformApp() {
 
                       <TopikQ53VisualChart
                         promptText={currentQuestion.prompt_text}
-                        passageText={currentQuestion.passage_text}
+                        passageText={currentQuestion.passage_text ?? undefined}
                       />
                     </div>
                   )}
