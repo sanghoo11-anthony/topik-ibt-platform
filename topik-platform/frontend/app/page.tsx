@@ -21,6 +21,7 @@ import {
   Home,
   LayoutGrid,
   Library,
+  LogIn,
   Pause,
   PenTool,
   Play,
@@ -29,6 +30,7 @@ import {
   Sparkles,
   Square,
   Trash2,
+  User,
   Video,
   Volume2,
 } from "lucide-react";
@@ -37,6 +39,16 @@ import WritingGridEditor, {
   TopikQ53VisualChart,
 } from "@/components/WritingGridEditor";
 import GradingReportModal from "@/components/GradingReportModal";
+import AuthModal from "@/components/AuthModal";
+import {
+  authService,
+  AuthSession,
+  AuthUser,
+} from "@/services/authService";
+import {
+  userDataService,
+  ExamRecordDTO,
+} from "@/services/userDataService";
 import { useExamStore } from "@/store/useExamStore";
 import {
   SUPPORTED_LANGUAGES,
@@ -113,6 +125,12 @@ export default function TopikPlatformApp() {
   const [activeMenu, setActiveMenu] = useState<ActiveMenu>("home");
   const [sectionFilter, setSectionFilter] = useState<ExamSectionFilter>("ALL");
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+
+  // Cloud Auth & User Data Sync (Supabase Adapter)
+  const [authSession, setAuthSession] = useState<AuthSession | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [examRecords, setExamRecords] = useState<ExamRecordDTO[]>([]);
+  const currentUser: AuthUser | null = authSession?.user || null;
 
   // Listening & Lecture TTS state
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -230,6 +248,59 @@ export default function TopikPlatformApp() {
     });
   };
 
+  const loadCloudUserData = useCallback(
+    async (session: AuthSession) => {
+      const [profile, cloudVocab, cloudRecords] = await Promise.all([
+        userDataService.getProfile(session),
+        userDataService.getSavedVocabularies(session),
+        userDataService.getExamRecords(session),
+      ]);
+
+      if (profile) {
+        if (profile.native_language) setLanguage(profile.native_language);
+        if (profile.target_level) setTargetLevel(profile.target_level);
+      }
+
+      if (cloudVocab.length > 0) {
+        setSavedWords(
+          cloudVocab.map((v) => ({
+            lemma: v.lemma,
+            pronunciation: v.pronunciation,
+            part_of_speech: v.part_of_speech,
+            word_grade: v.word_grade,
+            korean_definition: v.korean_definition,
+            translated_word: v.translated_word,
+            lang: selectedLanguage,
+          }))
+        );
+      }
+
+      if (cloudRecords.length > 0) {
+        setExamRecords(cloudRecords);
+      }
+    },
+    [selectedLanguage, setLanguage, setTargetLevel]
+  );
+
+  // Restore saved auth session on mount
+  useEffect(() => {
+    authService.getSession().then((session) => {
+      if (session) {
+        setAuthSession(session);
+        loadCloudUserData(session);
+      }
+    });
+  }, [loadCloudUserData]);
+
+  // Sync profile preferences when logged in
+  useEffect(() => {
+    if (!authSession) return;
+    userDataService.upsertProfile(authSession, {
+      native_language: selectedLanguage,
+      target_level: targetLevel,
+    });
+  }, [authSession, selectedLanguage, targetLevel]);
+
   // 1. Initialize exam session on mount
   useEffect(() => {
     let mounted = true;
@@ -337,6 +408,19 @@ export default function TopikPlatformApp() {
         const reportData: SessionReportResponse = await res.json();
         setReport(reportData);
         setActiveMenu("report");
+
+        if (authSession) {
+          await userDataService.saveExamRecord(authSession, {
+            target_level: targetLevel,
+            total_score: reportData.total_score,
+            listening_score: reportData.listening_score,
+            reading_score: reportData.reading_score,
+            writing_score: reportData.writing_score,
+            answers_json: answers,
+          });
+          const updatedRecords = await userDataService.getExamRecords(authSession);
+          setExamRecords(updatedRecords);
+        }
       }
     } catch {
       // Offline fallback report
@@ -407,19 +491,28 @@ export default function TopikPlatformApp() {
     const firstSense = item.senses[0];
     if (!firstSense) return;
     if (savedWords.some((w) => w.lemma === item.lemma)) return;
-    setSavedWords((prev) => [
-      {
-        lemma: item.lemma,
-        pronunciation: item.pronunciation,
-        part_of_speech: item.part_of_speech,
-        word_grade: item.word_grade,
-        korean_definition: firstSense.korean_definition,
-        translated_word: firstSense.translated_word,
-        translated_definition: firstSense.translated_definition,
-        lang: selectedLanguage,
-      },
-      ...prev,
-    ]);
+    const newItem: SavedWordItem = {
+      lemma: item.lemma,
+      pronunciation: item.pronunciation,
+      part_of_speech: item.part_of_speech,
+      word_grade: item.word_grade,
+      korean_definition: firstSense.korean_definition,
+      translated_word: firstSense.translated_word,
+      translated_definition: firstSense.translated_definition,
+      lang: selectedLanguage,
+    };
+    setSavedWords((prev) => [newItem, ...prev]);
+
+    if (authSession) {
+      userDataService.saveVocabulary(authSession, {
+        lemma: newItem.lemma,
+        pronunciation: newItem.pronunciation,
+        part_of_speech: newItem.part_of_speech,
+        word_grade: newItem.word_grade,
+        korean_definition: newItem.korean_definition,
+        translated_word: newItem.translated_word,
+      });
+    }
   };
 
   const filteredCuratedVocab = useMemo(() => {
@@ -688,6 +781,33 @@ export default function TopikPlatformApp() {
                   <span>시험 시작</span>
                 </button>
               </div>
+
+              {/* 3. Account Login / Profile Button */}
+              <button
+                type="button"
+                onClick={() => setIsAuthModalOpen(true)}
+                className={`flex items-center gap-1.5 rounded-xl border-2 px-3 py-1.5 text-xs font-extrabold transition ${
+                  currentUser
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                    : "border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-slate-50"
+                }`}
+              >
+                {currentUser ? (
+                  <>
+                    <User className="h-3.5 w-3.5 text-emerald-600" />
+                    <span className="max-w-[110px] truncate">
+                      {currentUser.email.split("@")[0]}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <LogIn className="h-3.5 w-3.5 text-blue-600" />
+                    <span>
+                      {selectedLanguage === "ko" ? "로그인" : "Sign In"}
+                    </span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </header>
@@ -1278,6 +1398,7 @@ export default function TopikPlatformApp() {
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="rounded-lg bg-slate-900 px-2.5 py-0.5 text-xs font-extrabold text-white">
                       Q{currentQuestion.question_number}
+
                     </span>
                     <span className="rounded-lg bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-700">
                       {currentQuestion.section_name}
@@ -1877,11 +1998,17 @@ export default function TopikPlatformApp() {
 
                     <button
                       type="button"
-                      onClick={() =>
+                      onClick={() => {
                         setSavedWords((prev) =>
                           prev.filter((w) => w.lemma !== item.lemma)
-                        )
-                      }
+                        );
+                        if (authSession) {
+                          userDataService.deleteVocabulary(
+                            authSession,
+                            item.lemma
+                          );
+                        }
+                      }}
                       className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -2521,11 +2648,53 @@ export default function TopikPlatformApp() {
               </div>
             </div>
           )}
+          {currentUser && examRecords.length > 0 && (
+            <div className="space-y-3 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="text-base font-extrabold text-slate-900">
+                ☁️ 클라우드 저장 성적 기록 ({currentUser.email})
+              </h3>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {examRecords.map((rec, idx) => (
+                  <div
+                    key={rec.id || idx}
+                    className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs"
+                  >
+                    <div className="flex items-center justify-between font-bold text-slate-700">
+                      <span>목표 {formatLevelLabel(rec.target_level)}</span>
+                      <span className="text-indigo-700">
+                        총점 {rec.total_score}점
+                      </span>
+                    </div>
+                    <div className="mt-1.5 text-slate-500">
+                      듣기 {rec.listening_score} · 읽기 {rec.reading_score} · 쓰기{" "}
+                      {rec.writing_score}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </main>
       )}
 
       {/* Detailed AI Grading Report Modal */}
       <GradingReportModal />
+
+      {/* Cloud Account Sign In / Sign Up Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        currentUser={currentUser}
+        onAuthSuccess={(session) => {
+          setAuthSession(session);
+          loadCloudUserData(session);
+        }}
+        onSignOut={() => {
+          setAuthSession(null);
+          setExamRecords([]);
+        }}
+        selectedLanguage={selectedLanguage}
+      />
     </div>
   );
 }
