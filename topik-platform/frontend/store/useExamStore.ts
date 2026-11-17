@@ -1,10 +1,12 @@
 import { create } from "zustand";
 import { QuestionItem, SessionReportResponse } from "@/types/exam";
+import { AttemptMode, FeedbackReportResponse } from "@/types/database";
 import { COMPREHENSIVE_QUESTIONS } from "@/data/studyData";
 
 export interface UserAnswerDraft {
   submitted_option_number?: number;
   submitted_text?: string;
+  time_spent_sec?: number;
 }
 
 export const DEFAULT_QUESTIONS: QuestionItem[] = COMPREHENSIVE_QUESTIONS;
@@ -15,7 +17,10 @@ interface PersistedExamState {
   selectedLanguage?: string;
   targetLevel?: number;
   answers?: Record<string, UserAnswerDraft>;
+  questionTimeSpent?: Record<string, number>;
   report?: SessionReportResponse | null;
+  analysisReport?: FeedbackReportResponse | null;
+  currentAttemptId?: string | null;
 }
 
 export function loadPersistedExamState(): PersistedExamState | null {
@@ -39,6 +44,18 @@ export function savePersistedExamState(state: PersistedExamState): void {
   }
 }
 
+function persistSnapshot(s: ExamState): void {
+  savePersistedExamState({
+    selectedLanguage: s.selectedLanguage,
+    targetLevel: s.targetLevel,
+    answers: s.answers,
+    questionTimeSpent: s.questionTimeSpent,
+    report: s.report,
+    analysisReport: s.analysisReport,
+    currentAttemptId: s.currentAttemptId,
+  });
+}
+
 interface ExamState {
   sessionId: string | null;
   examTitle: string;
@@ -49,10 +66,17 @@ interface ExamState {
   questions: QuestionItem[];
   currentQuestionIndex: number;
   answers: Record<string, UserAnswerDraft>;
+  questionTimeSpent: Record<string, number>;
+  examMode: AttemptMode;
+  activeQuestionIds: string[] | null;
+  startedAtIso: string;
+  currentAttemptId: string | null;
   lastSavedAt: string | null;
   isSaving: boolean;
   isSubmitting: boolean;
+  isAnalyzing: boolean;
   report: SessionReportResponse | null;
+  analysisReport: FeedbackReportResponse | null;
   isReportModalOpen: boolean;
 
   hydrateFromStorage: () => void;
@@ -67,12 +91,20 @@ interface ExamState {
   setLanguage: (lang: string) => void;
   setTargetLevel: (level: number) => void;
   setCurrentQuestionIndex: (index: number) => void;
+  recordQuestionTime: (questionId: string, deltaSec?: number) => void;
   setOptionAnswer: (questionId: string, optionNumber: number) => void;
   setTextAnswer: (questionId: string, text: string) => void;
   setSavingState: (isSaving: boolean, savedAt?: string) => void;
   setSubmittingState: (isSubmitting: boolean) => void;
+  setCurrentAttemptId: (attemptId: string | null) => void;
+  setAnalysisState: (
+    isAnalyzing: boolean,
+    analysisReport?: FeedbackReportResponse | null
+  ) => void;
   setReport: (report: SessionReportResponse | null) => void;
   setReportModalOpen: (open: boolean) => void;
+  startWeaknessDrill: (questionIds: string[]) => number;
+  clearWeaknessDrill: () => void;
 }
 
 export const useExamStore = create<ExamState>((set, get) => ({
@@ -85,10 +117,17 @@ export const useExamStore = create<ExamState>((set, get) => ({
   questions: DEFAULT_QUESTIONS,
   currentQuestionIndex: 0,
   answers: {},
+  questionTimeSpent: {},
+  examMode: "mock_exam",
+  activeQuestionIds: null,
+  startedAtIso: new Date().toISOString(),
+  currentAttemptId: null,
   lastSavedAt: null,
   isSaving: false,
   isSubmitting: false,
+  isAnalyzing: false,
   report: null,
+  analysisReport: null,
   isReportModalOpen: false,
 
   hydrateFromStorage: () => {
@@ -107,7 +146,16 @@ export const useExamStore = create<ExamState>((set, get) => ({
             : 180 * 60
           : state.remainingSeconds,
       answers: saved.answers || state.answers,
+      questionTimeSpent: saved.questionTimeSpent || state.questionTimeSpent,
       report: saved.report !== undefined ? saved.report : state.report,
+      analysisReport:
+        saved.analysisReport !== undefined
+          ? saved.analysisReport
+          : state.analysisReport,
+      currentAttemptId:
+        saved.currentAttemptId !== undefined
+          ? saved.currentAttemptId
+          : state.currentAttemptId,
     }));
   },
 
@@ -131,13 +179,7 @@ export const useExamStore = create<ExamState>((set, get) => ({
 
   setLanguage: (lang) => {
     set({ selectedLanguage: lang });
-    const s = get();
-    savePersistedExamState({
-      selectedLanguage: lang,
-      targetLevel: s.targetLevel,
-      answers: s.answers,
-      report: s.report,
-    });
+    persistSnapshot(get());
   },
 
   setTargetLevel: (level) => {
@@ -145,16 +187,36 @@ export const useExamStore = create<ExamState>((set, get) => ({
       targetLevel: level,
       remainingSeconds: level <= 2 ? 100 * 60 : 180 * 60,
     });
-    const s = get();
-    savePersistedExamState({
-      selectedLanguage: s.selectedLanguage,
-      targetLevel: level,
-      answers: s.answers,
-      report: s.report,
-    });
+    persistSnapshot(get());
   },
 
   setCurrentQuestionIndex: (index) => set({ currentQuestionIndex: index }),
+
+  recordQuestionTime: (questionId, deltaSec = 1) => {
+    let nextSec = 0;
+    set((state) => {
+      nextSec = (state.questionTimeSpent[questionId] || 0) + deltaSec;
+      const existingDraft = state.answers[questionId];
+      return {
+        questionTimeSpent: {
+          ...state.questionTimeSpent,
+          [questionId]: nextSec,
+        },
+        answers: existingDraft
+          ? {
+              ...state.answers,
+              [questionId]: {
+                ...existingDraft,
+                time_spent_sec: nextSec,
+              },
+            }
+          : state.answers,
+      };
+    });
+    if (nextSec > 0 && nextSec % 5 === 0) {
+      persistSnapshot(get());
+    }
+  },
 
   setOptionAnswer: (questionId, optionNumber) => {
     set((state) => ({
@@ -163,16 +225,11 @@ export const useExamStore = create<ExamState>((set, get) => ({
         [questionId]: {
           ...state.answers[questionId],
           submitted_option_number: optionNumber,
+          time_spent_sec: state.questionTimeSpent[questionId] || 0,
         },
       },
     }));
-    const s = get();
-    savePersistedExamState({
-      selectedLanguage: s.selectedLanguage,
-      targetLevel: s.targetLevel,
-      answers: s.answers,
-      report: s.report,
-    });
+    persistSnapshot(get());
   },
 
   setTextAnswer: (questionId, text) => {
@@ -182,16 +239,11 @@ export const useExamStore = create<ExamState>((set, get) => ({
         [questionId]: {
           ...state.answers[questionId],
           submitted_text: text,
+          time_spent_sec: state.questionTimeSpent[questionId] || 0,
         },
       },
     }));
-    const s = get();
-    savePersistedExamState({
-      selectedLanguage: s.selectedLanguage,
-      targetLevel: s.targetLevel,
-      answers: s.answers,
-      report: s.report,
-    });
+    persistSnapshot(get());
   },
 
   setSavingState: (isSaving, savedAt) =>
@@ -202,19 +254,53 @@ export const useExamStore = create<ExamState>((set, get) => ({
 
   setSubmittingState: (isSubmitting) => set({ isSubmitting }),
 
+  setCurrentAttemptId: (attemptId) => {
+    set({ currentAttemptId: attemptId });
+    persistSnapshot(get());
+  },
+
+  setAnalysisState: (isAnalyzing, analysisReport) => {
+    set((state) => ({
+      isAnalyzing,
+      analysisReport:
+        analysisReport !== undefined ? analysisReport : state.analysisReport,
+    }));
+    if (analysisReport !== undefined) {
+      persistSnapshot(get());
+    }
+  },
+
   setReport: (report) => {
     set({
       report,
       isReportModalOpen: Boolean(report),
     });
-    const s = get();
-    savePersistedExamState({
-      selectedLanguage: s.selectedLanguage,
-      targetLevel: s.targetLevel,
-      answers: s.answers,
-      report,
-    });
+    persistSnapshot(get());
   },
 
   setReportModalOpen: (open) => set({ isReportModalOpen: open }),
+
+  startWeaknessDrill: (questionIds) => {
+    const questions = get().questions;
+    const validIds = questionIds.filter((id) =>
+      questions.some((q) => q.question_id === id)
+    );
+    const firstIdx =
+      validIds.length > 0
+        ? questions.findIndex((q) => q.question_id === validIds[0])
+        : 0;
+    set({
+      examMode: "weakness_drill",
+      activeQuestionIds: validIds.length > 0 ? validIds : null,
+      currentQuestionIndex: firstIdx >= 0 ? firstIdx : 0,
+      startedAtIso: new Date().toISOString(),
+    });
+    return firstIdx >= 0 ? firstIdx : 0;
+  },
+
+  clearWeaknessDrill: () =>
+    set({
+      examMode: "mock_exam",
+      activeQuestionIds: null,
+    }),
 }));

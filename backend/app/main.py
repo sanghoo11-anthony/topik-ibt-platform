@@ -11,7 +11,7 @@ from kiwipiepy import Kiwi
 import redis.asyncio as redis
 from dotenv import load_dotenv
 
-from app.routers import exams
+from app.routers import analysis, exams
 from app.data.study_bank import (
     CURATED_VOCAB_LIST,
     GRAMMAR_PATTERNS,
@@ -35,8 +35,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 시험 세션 시작/자동저장/제출/리포트 라우터 등록
+# 시험 세션 시작/자동저장/제출/리포트 및 오답 분석 라우터 등록
 app.include_router(exams.router)
+app.include_router(analysis.router)
 
 kiwi = Kiwi()
 redis_client = redis.from_url(

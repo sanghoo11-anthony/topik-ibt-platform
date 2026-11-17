@@ -13,6 +13,7 @@ import {
 import { useExamStore } from "@/store/useExamStore";
 import { SessionReportResponse, SUPPORTED_LANGUAGES } from "@/types/exam";
 import { speakMultilingualText } from "@/utils/speech";
+import WeaknessAnalysisPanel from "@/components/WeaknessAnalysisPanel";
 
 interface ReportContentProps {
   report: SessionReportResponse;
@@ -330,12 +331,25 @@ export function ReportContent({
   );
 }
 
-export default function GradingReportModal() {
+interface GradingReportModalProps {
+  onRegenerateAnalysis?: () => void;
+  onStartWeaknessDrill?: (questionIds: string[]) => void;
+}
+
+export default function GradingReportModal({
+  onRegenerateAnalysis,
+  onStartWeaknessDrill,
+}: GradingReportModalProps) {
   const {
     report,
+    questions,
+    questionTimeSpent,
+    isAnalyzing,
+    analysisReport,
     isReportModalOpen,
     setReportModalOpen,
     selectedLanguage,
+    startWeaknessDrill,
   } = useExamStore();
 
   if (!report || !isReportModalOpen) return null;
@@ -343,6 +357,15 @@ export default function GradingReportModal() {
   const langMeta =
     SUPPORTED_LANGUAGES.find((l) => l.code === selectedLanguage) ||
     SUPPORTED_LANGUAGES[0];
+
+  const handleDrillClick = (ids: string[]) => {
+    setReportModalOpen(false);
+    if (onStartWeaknessDrill) {
+      onStartWeaknessDrill(ids);
+    } else {
+      startWeaknessDrill(ids);
+    }
+  };
 
   return (
     <div
@@ -378,8 +401,17 @@ export default function GradingReportModal() {
         </div>
 
         {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <div className="flex-1 space-y-6 overflow-y-auto p-4 sm:p-6">
           <ReportContent report={report} selectedLanguage={selectedLanguage} />
+          <WeaknessAnalysisPanel
+            isAnalyzing={isAnalyzing}
+            analysisReport={analysisReport}
+            selectedLanguage={selectedLanguage}
+            questionTimeSpent={questionTimeSpent}
+            questions={questions}
+            onRegenerate={() => onRegenerateAnalysis?.()}
+            onStartWeaknessDrill={handleDrillClick}
+          />
         </div>
       </div>
     </div>

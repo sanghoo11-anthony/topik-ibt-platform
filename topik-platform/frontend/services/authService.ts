@@ -28,8 +28,11 @@ export interface IAuthService {
   signOut(): Promise<void>;
 }
 
-export const SUPABASE_URL = "https://bnfspjxhzygoqasdfmzn.supabase.co";
+export const SUPABASE_URL =
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  "https://bnfspjxhzygoqasdfmzn.supabase.co";
 export const SUPABASE_PUBLISHABLE_KEY =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   "sb_publishable_LqVvqRJf8M6CSPArlRhIBw_tOV88ByH";
 
 const STORAGE_KEY = "topik_ibt_auth_session";

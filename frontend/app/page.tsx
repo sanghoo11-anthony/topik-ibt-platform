@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -41,6 +41,7 @@ import WritingGridEditor, {
 import GradingReportModal, {
   ReportContent,
 } from "@/components/GradingReportModal";
+import WeaknessAnalysisPanel from "@/components/WeaknessAnalysisPanel";
 import AuthModal from "@/components/AuthModal";
 import {
   authService,
@@ -69,6 +70,7 @@ import {
 import { analyzeAndLookupWord } from "@/utils/dictionary";
 import {
   API_BASE_URL,
+  analyzeAttemptWithBackendFallback,
   buildClientSideExamReport,
   fetchWithTimeout,
   shouldUseBackendApi,
@@ -76,7 +78,13 @@ import {
 import { speakMultilingualText, stopSpeech } from "@/utils/speech";
 
 type ActiveMenu = "home" | "exam" | "writing" | "vocab" | "study" | "report";
-type ExamSectionFilter = "ALL" | "LEVEL" | "LISTENING" | "READING" | "WRITING";
+type ExamSectionFilter =
+  | "ALL"
+  | "LEVEL"
+  | "LISTENING"
+  | "READING"
+  | "WRITING"
+  | "DRILL";
 
 interface SavedWordItem {
   lemma: string;
@@ -120,6 +128,18 @@ export default function TopikPlatformApp() {
     hydrateFromStorage,
     initSessionData,
     tickTimer,
+    questionTimeSpent,
+    examMode,
+    activeQuestionIds,
+    startedAtIso,
+    currentAttemptId,
+    isAnalyzing,
+    analysisReport,
+    recordQuestionTime,
+    setCurrentAttemptId,
+    setAnalysisState,
+    startWeaknessDrill,
+    clearWeaknessDrill,
     lastSavedAt,
     isSaving,
     setSavingState,
@@ -349,13 +369,68 @@ export default function TopikPlatformApp() {
     };
   }, [initSessionData]);
 
-  // 2. Countdown timer
+  // Track current question ID cleanly without resetting the 1s timer interval
+  const isWorkspaceMode = activeMenu === "exam" || activeMenu === "writing";
+  const activeTimingRef = useRef<{
+    isWorkspace: boolean;
+    isRunning: boolean;
+    questionId: string | null;
+  }>({
+    isWorkspace: isWorkspaceMode,
+    isRunning: isTimerRunning,
+    questionId: currentQuestion?.question_id || null,
+  });
+  activeTimingRef.current = {
+    isWorkspace: isWorkspaceMode,
+    isRunning: isTimerRunning,
+    questionId: currentQuestion?.question_id || null,
+  };
+
+  // 2. Countdown timer + per-question time_spent_sec accumulator
   useEffect(() => {
     const timer = setInterval(() => {
       tickTimer();
+      const { isWorkspace, isRunning, questionId } = activeTimingRef.current;
+      if (isWorkspace && isRunning && questionId) {
+        recordQuestionTime(questionId, 1);
+      }
     }, 1000);
     return () => clearInterval(timer);
-  }, [tickTimer]);
+  }, [tickTimer, recordQuestionTime]);
+
+  // Helper: Run FastAPI + Gemini AI Attempt Analysis (asynchronously in background)
+  const runAttemptAnalysis = useCallback(
+    async (
+      targetReport: SessionReportResponse,
+      resolvedAttemptId: string,
+      forceRegenerate: boolean = false
+    ) => {
+      setAnalysisState(true);
+      try {
+        const result = await analyzeAttemptWithBackendFallback({
+          attemptId: resolvedAttemptId,
+          userId: currentUser?.id,
+          forceRegenerate,
+          questions,
+          report: targetReport,
+          questionTimeSpent,
+          targetLevel,
+          nativeLang: selectedLanguage,
+        });
+        setAnalysisState(false, result);
+      } catch {
+        setAnalysisState(false, null);
+      }
+    },
+    [
+      currentUser?.id,
+      questions,
+      questionTimeSpent,
+      selectedLanguage,
+      setAnalysisState,
+      targetLevel,
+    ]
+  );
 
   // 3. Auto-save answers every 10 seconds
   const triggerAutoSave = useCallback(async () => {
@@ -407,7 +482,7 @@ export default function TopikPlatformApp() {
     return () => clearInterval(interval);
   }, [triggerAutoSave]);
 
-  // 4. Submit exam & open AI Grading Report (with full client-side offline grading engine)
+  // 4. Submit exam & open AI Grading Report (immediate scores + background attempt analysis)
   const handleSubmitExam = async () => {
     setSubmittingState(true);
     const reportLang = selectedLanguage;
@@ -416,6 +491,8 @@ export default function TopikPlatformApp() {
         question_id: qid,
         submitted_option_number: draft.submitted_option_number ?? null,
         submitted_text: draft.submitted_text ?? null,
+        time_spent_sec:
+          draft.time_spent_sec ?? questionTimeSpent[qid] ?? 0,
       }));
 
       let reportData: SessionReportResponse | null = null;
@@ -451,28 +528,84 @@ export default function TopikPlatformApp() {
         );
       }
 
+      // Show immediate score report and jump to View 6
       setReport(reportData);
       setActiveMenu("report");
       if (typeof window !== "undefined") {
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
 
-      if (authSession) {
-        try {
-          await userDataService.saveExamRecord(authSession, {
-            target_level: targetLevel,
-            total_score: reportData.total_score,
-            listening_score: reportData.listening_score,
-            reading_score: reportData.reading_score,
-            writing_score: reportData.writing_score,
-            answers_json: answers,
-          });
-          const updatedRecords = await userDataService.getExamRecords(authSession);
-          setExamRecords(updatedRecords);
-        } catch {
-          // Keep local report even if cloud sync fails
+      // Background task: persist test_attempts + attempt_answers (with time_spent_sec) & fetch AI weakness analysis
+      setAnalysisState(true, null);
+      void (async () => {
+        let attemptId = `local-attempt-${Date.now()}`;
+        if (authSession) {
+          try {
+            await userDataService.saveExamRecord(authSession, {
+              target_level: targetLevel,
+              total_score: reportData.total_score,
+              listening_score: reportData.listening_score,
+              reading_score: reportData.reading_score,
+              writing_score: reportData.writing_score,
+              answers_json: answers,
+            });
+            const updatedRecords = await userDataService.getExamRecords(
+              authSession
+            );
+            setExamRecords(updatedRecords);
+
+            // Persist only interacted/answered items so unseen items stay available for weakness drill recommendations
+            const reviewMap = new Map(
+              reportData.questions_review.map((r) => [r.question_id, r])
+            );
+            const interactedAnswers = questions
+              .filter((q) => {
+                const draft = answers[q.question_id];
+                const hasAns =
+                  draft?.submitted_option_number != null ||
+                  Boolean(draft?.submitted_text?.trim());
+                const spent = questionTimeSpent[q.question_id] || 0;
+                return hasAns || spent > 0;
+              })
+              .map((q) => {
+                const draft = answers[q.question_id];
+                const rev = reviewMap.get(q.question_id);
+                return {
+                  question_id: q.question_id,
+                  selected_option:
+                    draft?.submitted_option_number != null
+                      ? String(draft.submitted_option_number)
+                      : draft?.submitted_text ?? null,
+                  is_correct: rev?.is_correct ?? false,
+                  time_spent_sec:
+                    questionTimeSpent[q.question_id] ??
+                    draft?.time_spent_sec ??
+                    0,
+                };
+              });
+
+            const savedAttemptId =
+              await userDataService.createAttemptAndSaveAnswers(authSession, {
+                mode: examMode,
+                status: "completed",
+                listening_score: reportData.listening_score,
+                reading_score: reportData.reading_score,
+                writing_score: reportData.writing_score,
+                total_score: reportData.total_score,
+                started_at: startedAtIso,
+                completed_at: new Date().toISOString(),
+                answers: interactedAnswers,
+              });
+            if (savedAttemptId) {
+              attemptId = savedAttemptId;
+            }
+          } catch {
+            // Keep local attemptId fallback even if cloud save fails
+          }
         }
-      }
+        setCurrentAttemptId(attemptId);
+        await runAttemptAnalysis(reportData, attemptId, false);
+      })();
     } finally {
       setSubmittingState(false);
     }
@@ -557,6 +690,9 @@ export default function TopikPlatformApp() {
     return questions
       .map((q, idx) => ({ q, idx }))
       .filter(({ q }) => {
+        if (sectionFilter === "DRILL" && activeQuestionIds) {
+          return activeQuestionIds.includes(q.question_id);
+        }
         if (sectionFilter === "ALL") return true;
         if (sectionFilter === "LISTENING") return q.section_name === "LISTENING";
         if (sectionFilter === "READING") return q.section_name === "READING";
@@ -569,7 +705,7 @@ export default function TopikPlatformApp() {
         }
         return true;
       });
-  }, [questions, sectionFilter, targetLevel]);
+  }, [questions, sectionFilter, targetLevel, activeQuestionIds]);
 
   // All Q53 indices so user can switch between diverse Q53 graph questions easily
   const q53QuestionIndices = useMemo(() => {
@@ -601,6 +737,7 @@ export default function TopikPlatformApp() {
     menu: ActiveMenu = "exam",
     filter: ExamSectionFilter = "ALL"
   ) => {
+    clearWeaknessDrill();
     setSectionFilter(filter);
     setCurrentQuestionIndex(qIndex);
     setActiveMenu(menu);
@@ -610,6 +747,7 @@ export default function TopikPlatformApp() {
   };
 
   const startExamForTargetLevel = (lvl: number) => {
+    clearWeaknessDrill();
     const firstMatchingIdx = questions.findIndex((q) => {
       const d = q.difficulty_level || 3;
       if (lvl <= 2) return d <= 2;
@@ -623,6 +761,20 @@ export default function TopikPlatformApp() {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
+
+  const handleStartWeaknessDrill = useCallback(
+    (questionIds: string[]) => {
+      if (questionIds.length === 0) return;
+      startWeaknessDrill(questionIds);
+      setSectionFilter("DRILL");
+      setReportModalOpen(false);
+      setActiveMenu("exam");
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    },
+    [setReportModalOpen, startWeaknessDrill]
+  );
 
   const firstWritingIndex = useMemo(() => {
     const idx = questions.findIndex((q) => q.section_name === "WRITING");
@@ -643,8 +795,6 @@ export default function TopikPlatformApp() {
   const currentMiniLecture =
     BUILT_IN_MINI_LECTURES.find((l) => l.id === selectedMiniLectureId) ||
     BUILT_IN_MINI_LECTURES[0];
-
-  const isWorkspaceMode = activeMenu === "exam" || activeMenu === "writing";
 
   return (
     <div className="flex min-h-screen w-full max-w-[100vw] flex-col overflow-x-hidden bg-slate-50 text-slate-900">
@@ -1256,6 +1406,25 @@ export default function TopikPlatformApp() {
                     {f.label}
                   </button>
                 ))}
+                {activeQuestionIds && activeQuestionIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSectionFilter("DRILL");
+                      const idx = questions.findIndex((q) =>
+                        activeQuestionIds.includes(q.question_id)
+                      );
+                      if (idx >= 0) setCurrentQuestionIndex(idx);
+                    }}
+                    className={`shrink-0 rounded-lg px-2.5 py-1 text-xs font-bold transition ${
+                      sectionFilter === "DRILL"
+                        ? "bg-emerald-600 text-white shadow-sm"
+                        : "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
+                    }`}
+                  >
+                    🎯 약점 드릴 ({activeQuestionIds.length})
+                  </button>
+                )}
               </div>
 
               {/* Center: Compact Inline Question Selector Strip */}
@@ -1454,6 +1623,10 @@ export default function TopikPlatformApp() {
                     )}
                     <span className="rounded-lg bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-800">
                       {currentQuestion.score_points}점
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-0.5 font-mono text-[11px] font-bold text-slate-700">
+                      <Clock className="h-3 w-3 text-indigo-600" />
+                      {questionTimeSpent[currentQuestion.question_id] || 0}초
                     </span>
                   </div>
 
@@ -2660,21 +2833,40 @@ export default function TopikPlatformApp() {
               </div>
             </div>
           ) : (
-            <div className="space-y-6 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+            <div className="space-y-6">
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-xs font-bold text-amber-950">
                 <span>
                   🎯 목표 급수: {formatLevelLabel(targetLevel)} (합격 기준{" "}
                   {selectedLevelCutoff}점 이상)
                 </span>
                 <span className="rounded-lg bg-white px-2.5 py-1 text-indigo-700 ring-1 ring-amber-200">
-                  듣기 {report.listening_score} · 읽기 {report.reading_score} · 쓰기{" "}
-                  {report.writing_score}
+                  총점 {report.total_score} · 듣기 {report.listening_score} · 읽기{" "}
+                  {report.reading_score} · 쓰기 {report.writing_score}
                 </span>
               </div>
-              <ReportContent
-                report={report}
+
+              <WeaknessAnalysisPanel
+                isAnalyzing={isAnalyzing}
+                analysisReport={analysisReport}
                 selectedLanguage={selectedLanguage}
+                questionTimeSpent={questionTimeSpent}
+                questions={questions}
+                onRegenerate={() =>
+                  runAttemptAnalysis(
+                    report,
+                    currentAttemptId || `local-attempt-${Date.now()}`,
+                    true
+                  )
+                }
+                onStartWeaknessDrill={handleStartWeaknessDrill}
               />
+
+              <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+                <ReportContent
+                  report={report}
+                  selectedLanguage={selectedLanguage}
+                />
+              </div>
             </div>
           )}
           {currentUser && examRecords.length > 0 && (
@@ -2707,7 +2899,18 @@ export default function TopikPlatformApp() {
       )}
 
       {/* Detailed AI Grading Report Modal */}
-      <GradingReportModal />
+      <GradingReportModal
+        onRegenerateAnalysis={() => {
+          if (report) {
+            void runAttemptAnalysis(
+              report,
+              currentAttemptId || `local-attempt-${Date.now()}`,
+              true
+            );
+          }
+        }}
+        onStartWeaknessDrill={handleStartWeaknessDrill}
+      />
 
       {/* Cloud Account Sign In / Sign Up Modal */}
       <AuthModal

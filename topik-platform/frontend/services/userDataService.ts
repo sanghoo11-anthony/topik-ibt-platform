@@ -12,8 +12,29 @@ export interface UserProfile {
   id: string;
   email: string | null;
   nickname: string | null;
+  native_lang?: string;
   native_language: string;
   target_level: number;
+  subscription_tier?: string;
+}
+
+export interface SaveAttemptAnswerInput {
+  question_id: string;
+  selected_option: string | null;
+  is_correct: boolean;
+  time_spent_sec: number;
+}
+
+export interface SaveAttemptPayload {
+  mode: "mock_exam" | "weakness_drill";
+  status: "in_progress" | "completed";
+  listening_score: number;
+  reading_score: number;
+  writing_score: number;
+  total_score: number;
+  started_at: string;
+  completed_at: string;
+  answers: SaveAttemptAnswerInput[];
 }
 
 export interface SavedVocabDTO {
@@ -47,6 +68,10 @@ export interface IUserDataService {
   deleteVocabulary(session: AuthSession, lemma: string): Promise<void>;
   getExamRecords(session: AuthSession): Promise<ExamRecordDTO[]>;
   saveExamRecord(session: AuthSession, record: ExamRecordDTO): Promise<void>;
+  createAttemptAndSaveAnswers(
+    session: AuthSession,
+    payload: SaveAttemptPayload
+  ): Promise<string | null>;
 }
 
 function authHeaders(session: AuthSession): Record<string, string> {
@@ -68,7 +93,12 @@ class SupabaseUserDataAdapter implements IUserDataService {
       );
       if (!res.ok) return null;
       const rows = (await res.json()) as UserProfile[];
-      return rows[0] || null;
+      const row = rows[0];
+      if (!row) return null;
+      return {
+        ...row,
+        native_language: row.native_language || row.native_lang || "en",
+      };
     } catch {
       return null;
     }
@@ -89,6 +119,9 @@ class SupabaseUserDataAdapter implements IUserDataService {
           id: session.user.id,
           email: session.user.email,
           ...updates,
+          ...(updates.native_language
+            ? { native_lang: updates.native_language }
+            : {}),
           updated_at: new Date().toISOString(),
         }),
       });
@@ -189,6 +222,59 @@ class SupabaseUserDataAdapter implements IUserDataService {
       });
     } catch {
       // Ignore transient network errors
+    }
+  }
+
+  async createAttemptAndSaveAnswers(
+    session: AuthSession,
+    payload: SaveAttemptPayload
+  ): Promise<string | null> {
+    try {
+      const attemptRes = await fetch(`${SUPABASE_URL}/rest/v1/test_attempts`, {
+        method: "POST",
+        headers: {
+          ...authHeaders(session),
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify({
+          user_id: session.user.id,
+          mode: payload.mode,
+          status: payload.status,
+          listening_score: payload.listening_score,
+          reading_score: payload.reading_score,
+          writing_score: payload.writing_score,
+          total_score: payload.total_score,
+          started_at: payload.started_at,
+          completed_at: payload.completed_at,
+        }),
+      });
+      if (!attemptRes.ok) return null;
+      const attemptRows = (await attemptRes.json()) as Array<{ id?: string }>;
+      const attemptId = attemptRows[0]?.id;
+      if (!attemptId) return null;
+
+      if (payload.answers.length > 0) {
+        await fetch(`${SUPABASE_URL}/rest/v1/attempt_answers`, {
+          method: "POST",
+          headers: {
+            ...authHeaders(session),
+            Prefer: "resolution=merge-duplicates",
+          },
+          body: JSON.stringify(
+            payload.answers.map((item) => ({
+              attempt_id: attemptId,
+              question_id: item.question_id,
+              selected_option: item.selected_option,
+              is_correct: item.is_correct,
+              time_spent_sec: Math.max(0, Math.round(item.time_spent_sec)),
+            }))
+          ),
+        });
+      }
+
+      return attemptId;
+    } catch {
+      return null;
     }
   }
 }
