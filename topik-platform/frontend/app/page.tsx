@@ -647,7 +647,7 @@ export default function TopikPlatformApp() {
   const isWorkspaceMode = activeMenu === "exam" || activeMenu === "writing";
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
+    <div className="flex min-h-screen w-full max-w-[100vw] flex-col overflow-x-hidden bg-slate-50 text-slate-900">
       {/* ================= GLOBAL TOP NAVIGATION BAR ================= */}
       {!isWorkspaceMode && (
         <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
@@ -1203,12 +1203,12 @@ export default function TopikPlatformApp() {
 
       {/* ================= VIEW 2 & 3: IBT MOCK EXAM & WRITING WORKSPACE (ULTRA-COMPACT SINGLE BAR + NO-SCROLL SPLIT VIEW) ================= */}
       {(activeMenu === "exam" || activeMenu === "writing") && (
-        <div className="flex flex-1 flex-col">
+        <div className="flex w-full max-w-full min-w-0 flex-1 flex-col overflow-x-hidden">
           {/* Ultra-Slim Top Bar (Sticky only on desktop lg+ so mobile screen space isn't blocked) */}
-          <div className="border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur lg:sticky lg:top-0 lg:z-40">
-            <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4">
+          <div className="w-full max-w-full border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur lg:sticky lg:top-0 lg:z-40">
+            <div className="mx-auto grid w-full max-w-[1440px] grid-cols-1 gap-2 px-3 py-2 sm:px-4 lg:flex lg:flex-wrap lg:items-center lg:justify-between">
               {/* Left: Back Home + Compact Section Filter Pills */}
-              <div className="no-scrollbar flex w-full items-center gap-1.5 overflow-x-auto pb-0.5 sm:w-auto sm:pb-0">
+              <div className="no-scrollbar flex w-full max-w-full min-w-0 items-center gap-1.5 overflow-x-auto pb-0.5 lg:w-auto lg:pb-0">
                 <button
                   type="button"
                   onClick={() => setActiveMenu("home")}
@@ -1259,7 +1259,7 @@ export default function TopikPlatformApp() {
               </div>
 
               {/* Center: Compact Inline Question Selector Strip */}
-              <div className="no-scrollbar flex w-full flex-1 items-center gap-1 overflow-x-auto px-0.5 py-0.5 lg:w-auto">
+              <div className="no-scrollbar flex w-full max-w-full min-w-0 items-center gap-1 overflow-x-auto px-0.5 py-0.5 lg:w-auto lg:flex-1">
                 {filteredQuestionIndices.map(({ q, idx }) => {
                   const active = idx === currentQuestionIndex;
                   const done = isAnswered(q.question_id);
@@ -1298,7 +1298,7 @@ export default function TopikPlatformApp() {
               </div>
 
               {/* Right: Timer + Language Stack + Target Level Stack + Palette + Submit */}
-              <div className="flex w-full flex-wrap items-center justify-between gap-1.5 sm:w-auto sm:justify-end">
+              <div className="flex w-full max-w-full min-w-0 flex-wrap items-center gap-1.5 sm:justify-end lg:w-auto">
                 <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1">
                   <Clock className="h-3.5 w-3.5 text-blue-600" />
                   <span className="font-mono text-xs font-extrabold text-slate-900">
@@ -1436,7 +1436,7 @@ export default function TopikPlatformApp() {
           {/* 5:5 Split View Workspace — Locked Side-by-Side on Desktop so Problem/Graph and Wongoji are BOTH visible without scrolling up & down! */}
           <main className="mx-auto grid w-full max-w-[1440px] flex-1 grid-cols-1 gap-4 px-3 py-3 sm:px-4 lg:grid-cols-12 lg:items-start">
             {/* LEFT PANE (50%): Visual Chart for Q53 + Audio Player + Clickable Passage */}
-            <section className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:sticky lg:top-12 lg:col-span-6 lg:max-h-[calc(100vh-3.5rem)] lg:overflow-y-auto">
+            <section className="flex min-w-0 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:sticky lg:top-12 lg:col-span-6 lg:max-h-[calc(100vh-3.5rem)] lg:overflow-y-auto">
               <div className="space-y-3.5">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -1637,7 +1637,7 @@ export default function TopikPlatformApp() {
             </section>
 
             {/* RIGHT PANE (50%): Multiple Choice Options OR Wongoji Editor */}
-            <section className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:sticky lg:top-12 lg:col-span-6 lg:max-h-[calc(100vh-3.5rem)] lg:overflow-y-auto">
+            <section className="flex min-w-0 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:sticky lg:top-12 lg:col-span-6 lg:max-h-[calc(100vh-3.5rem)] lg:overflow-y-auto">
               <div className="space-y-4">
                 {currentQuestion.question_type === "MULTIPLE_CHOICE" ? (
                   <div className="space-y-2.5">
