@@ -76,6 +76,14 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
       "[듣기 대본 - 제91회 TOPIK I 유형]\n여자: 민수 씨, 주말에 보통 뭐 해요?\n남자: 저는 주말에 공원에서 자전거를 타거나 친구하고 축구를 해요.",
     prompt_text:
       "[TOPIK I · 1급 듣기] 다음 대화를 듣고 내용과 일치하는 것을 고르십시오. (음성 재생 버튼을 눌러 들으세요)",
+    correct_answer_text: "2",
+    explanations: {
+      ko: "남자는 주말에 공원에서 자전거를 타거나 축구를 한다고 했으므로 '공원에서 운동을 합니다'가 정답입니다.",
+      en: "The man says he rides a bicycle or plays soccer in the park on weekends, which means he exercises in the park.",
+      vi: "Người đàn ông nói cuối tuần thường đạp xe hoặc đá bóng ở công viên, tức là tập thể dục ở công viên.",
+      zh: "男士说周末通常在公园骑自行车或和朋友踢足球，因此正确答案是在公园运动。",
+      ja: "男の人は週末に公園で自転車に乗ったりサッカーをしたりすると言ったので、「公園で運動をします」が正解です。",
+    },
     options: [
       { option_number: 1, option_text: "남자는 주말에 집에서 영화를 봅니다." },
       { option_number: 2, option_text: "남자는 주말에 공원에서 운동을 합니다." },
@@ -94,6 +102,14 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
     passage_text:
       "[듣기 대본 - 장소 추론 유형]\n남자: 어서 오세요. 어디가 아파서 오셨어요?\n여자: 어제부터 목이 많이 아프고 열이 조금 나요.\n남자: 네, 입을 크게 벌려 보세요. 감기니까 주사 맞고 약 드시면 금방 나을 거예요.",
     prompt_text: "[TOPIK I · 1급 듣기] 여기는 어디입니까? 알맞은 것을 고르십시오.",
+    correct_answer_text: "3",
+    explanations: {
+      ko: "'어디가 아파서 오셨어요?', '입을 크게 벌려 보세요', '주사 맞고 약 드시면'이라는 진찰 표현을 통해 이곳이 '병원'임을 알 수 있습니다.",
+      en: "Expressions like 'Where does it hurt?', 'Open your mouth wide', and 'get an injection' indicate a hospital/clinic.",
+      vi: "Các câu hỏi khám bệnh và tiêm thuốc cho thấy đây là bệnh viện (병원).",
+      zh: "通过询问病情、张开嘴检查、打针吃药等表达，可以判断这里是医院（병원）。",
+      ja: "診察の会話（「どこが痛いですか」「注射を打って薬を飲めば」）から、ここが「病院」であることが分かります。",
+    },
     options: [
       { option_number: 1, option_text: "약국" },
       { option_number: 2, option_text: "우체국" },
@@ -113,6 +129,14 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
       "[듣기 대본 - 대화 후 이어질 행동 유형]\n여자: 수진 씨 생일 선물을 아직 못 샀는데 같이 백화점에 갈래요?\n남자: 좋아요. 그런데 제가 지금 도서관에 책을 반납해야 해요. 반납하고 바로 백화점 앞으로 갈게요.\n여자: 그래요. 그럼 저는 먼저 커피숍에서 기다리고 있을게요.",
     prompt_text:
       "[TOPIK I · 2급 듣기] 대화가 끝난 뒤에 남자가 이어서 할 행동으로 알맞은 것을 고르십시오.",
+    correct_answer_text: "1",
+    explanations: {
+      ko: "남자는 '제가 지금 도서관에 책을 반납해야 해요. 반납하고 바로 백화점 앞으로 갈게요'라고 했으므로 대화 직후 도서관에 가서 책을 반납합니다.",
+      en: "The man says 'I have to return a book to the library right now', so he will return the book at the library first.",
+      vi: "Người đàn ông nói bây giờ phải đi trả sách ở thư viện trước rồi mới đến bách hóa.",
+      zh: "男士说现在得先去图书馆还书，因此对话结束后男士接下来会去图书馆还书。",
+      ja: "男の人は「今図書館に本を返却しなければなりません」と言ったので、まず図書館へ行って本を返します。",
+    },
     options: [
       { option_number: 1, option_text: "도서관에 가서 책을 돌려준다." },
       { option_number: 2, option_text: "커피숍에 가서 여자를 만난다." },
@@ -135,6 +159,14 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
       "어제는 날씨가 아주 ( ㉠ ). 그래서 따뜻한 옷을 입고 밖에 나갔습니다.",
     prompt_text:
       "[TOPIK I · 1급 읽기] 빈칸 ( ㉠ )에 들어갈 가장 알맞은 것을 고르십시오.",
+    correct_answer_text: "2",
+    explanations: {
+      ko: "뒤 문장에서 '따뜻한 옷을 입고 밖에 나갔습니다'라고 했으므로 날씨가 '추웠습니다'가 가장 자연스럽습니다.",
+      en: "Since the speaker wore warm clothes to go outside, the weather must have been cold ('추웠습니다').",
+      vi: "Câu sau nói 'mặc áo ấm ra ngoài', nên thời tiết hôm qua rất lạnh ('추웠습니다').",
+      zh: "后一句说“穿着暖和的衣服出门了”，因此天气非常冷（추웠습니다）。",
+      ja: "後ろの文で「暖かい服を着て外に出ました」と言っているので、天気が「寒かったです（추웠습니다）」が正解です。",
+    },
     options: [
       { option_number: 1, option_text: "더웠습니다" },
       { option_number: 2, option_text: "추웠습니다" },
@@ -152,6 +184,14 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
     passage_text:
       "[인주시립도서관 휴관 안내]\n도서관 시설 수리와 청소 때문에 이번 주 금요일(11월 15일) 하루 동안 문을 닫습니다.\n빌린 책을 반납하실 분은 도서관 입구 옆의 무인 반납함을 이용해 주시기 바랍니다.\n토요일부터는 평소처럼 오전 9시에서 오후 8시까지 이용하실 수 있습니다.",
     prompt_text: "[TOPIK I · 2급 읽기] 다음 안내문의 내용과 같은 것을 고르십시오.",
+    correct_answer_text: "3",
+    explanations: {
+      ko: "안내문 첫 문장에 '도서관 시설 수리와 청소 때문에 이번 주 금요일 하루 동안 문을 닫습니다'라고 명시되어 있으므로 3번이 정답입니다.",
+      en: "The notice states the library will close on Friday for facility repairs and cleaning.",
+      vi: "Thông báo nêu rõ thứ Sáu thư viện đóng cửa để sửa chữa cơ sở vật chất và dọn dẹp.",
+      zh: "通知第一句明确说明因为设施维修和打扫，本周五闭馆一天。",
+      ja: "案内文に「施設の修理と掃除のため今週の金曜日一日休館します」と書かれているため、3番が正解です。",
+    },
     options: [
       { option_number: 1, option_text: "이번 주 주말에는 도서관 문을 닫습니다." },
       { option_number: 2, option_text: "금요일에는 빌린 책을 반납할 수 없습니다." },
@@ -170,6 +210,14 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
       "저는 한국 드라마를 보면서 한국어에 관심을 가지게 되었습니다. 처음에는 자막 없이 드라마를 보는 것이 ( ㉠ ) 지금은 자주 나오는 표현을 많이 알아듣습니다. 내년에는 한국에 직접 여행을 가서 한국 사람들과 이야기해 보고 싶습니다.",
     prompt_text:
       "[TOPIK I · 2급 읽기] 빈칸 ( ㉠ )에 들어갈 가장 알맞은 표현을 고르십시오.",
+    correct_answer_text: "1",
+    explanations: {
+      ko: "'처음에는 자막 없이 보는 것이 어려웠다'와 '지금은 많이 알아듣는다'가 서로 대조되므로 대조 연결어미 '-았/었지만'(어려웠지만)이 알맞습니다.",
+      en: "The first clause ('it was difficult at first') contrasts with the second ('now I understand a lot'), requiring '-았/었지만' ('어려웠지만').",
+      vi: "Vế trước ('lúc đầu khó') tương phản với vế sau ('bây giờ nghe hiểu nhiều'), nên dùng '-았/었지만' (어려웠지만).",
+      zh: "前句“起初很困难”与后句“现在能听懂很多”形成转折关系，因此应选表转折的“어려웠지만”。",
+      ja: "「最初は難しかった」と「今はよく聞き取れる」が対比されているため、逆接の「어려웠지만」が正解です。",
+    },
     options: [
       { option_number: 1, option_text: "어려웠지만" },
       { option_number: 2, option_text: "어려우니까" },
@@ -193,6 +241,14 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
       "[듣기 대본 - 제83회·91회 중급 업무 대화 유형]\n여자: 김 대리님, 다음 주에 있을 신제품 설명회 발표 자료는 다 준비되었나요?\n남자: 네, 자료 작성은 끝났는데 설문 조사 통계 그래프가 조금 복잡해 보여서 수정하고 있습니다.\n여자: 그래요? 그럼 그래프 수정이 끝나는 대로 출력해서 회의실에 먼저 비치해 주세요. 저는 안내 배너가 도착했는지 확인해 볼게요.",
     prompt_text:
       "[TOPIK II · 3~4급 듣기] 남자가 이어서 할 행동으로 알맞은 것을 고르십시오.",
+    correct_answer_text: "2",
+    explanations: {
+      ko: "남자는 현재 설문 조사 통계 그래프를 수정하고 있으며, 여자가 수정이 끝나는 대로 출력(인쇄)해 달라고 요청했으므로 2번이 정답입니다.",
+      en: "The man is currently revising the statistical graph in the presentation and was asked to print it once finished.",
+      vi: "Người đàn ông đang sửa biểu đồ thống kê trong tài liệu thuyết trình và sẽ in ra sau khi sửa xong.",
+      zh: "男士正在修改演示资料中的统计图表，修改完后需要打印出来放到会议室。",
+      ja: "男の人は発表資料の統計グラフを修正しており、終わったら印刷して会議室に置くよう頼まれたので2番が正解です。",
+    },
     options: [
       { option_number: 1, option_text: "신제품 설문 조사를 새로 실시한다." },
       { option_number: 2, option_text: "발표 자료의 그래프를 고쳐서 인쇄한다." },
@@ -212,6 +268,14 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
       "[듣기 대본 - 제64회 기출 변형 (서비스 만족도 인터뷰)]\n남자: 최근 저희 호텔을 찾는 고객 수는 늘었는데 재방문율은 오히려 정체되어 있어서 걱정입니다.\n여자: 맞아요. 시설을 새로 단장하는 것도 중요하지만, 무엇보다 고객들이 남긴 이용 후기를 꼼꼼히 분석해 볼 필요가 있어요. 불만 사항이 무엇인지 정확히 파악해야 맞춤형 서비스를 개선할 수 있거든요.\n남자: 일리가 있네요. 이번 주 마케팅 회의에서 최근 6개월간의 고객 후기 데이터부터 정리해 봅시다.",
     prompt_text:
       "[TOPIK II · 4급 듣기] 여자의 중심 생각으로 가장 알맞은 것을 고르십시오.",
+    correct_answer_text: "4",
+    explanations: {
+      ko: "여자는 '무엇보다 고객들이 남긴 이용 후기를 꼼꼼히 분석해 볼 필요가 있어요'라며 후기 분석을 통한 맞춤형 서비스 개선을 강조하고 있습니다.",
+      en: "The woman emphasizes carefully analyzing customer reviews to identify complaints and improve tailored services.",
+      vi: "Người phụ nữ nhấn mạnh cần phân tích kỹ đánh giá của khách hàng để cải thiện dịch vụ.",
+      zh: "女士强调最重要的是仔细分析顾客留下的评价，准确掌握不满事项以改善服务。",
+      ja: "女の人は「何より顧客が残した利用レビューを綿密に分析する必要がある」と強調しているため、4番が正解です。",
+    },
     options: [
       { option_number: 1, option_text: "호텔 시설을 최신식으로 빠르게 개조해야 한다." },
       { option_number: 2, option_text: "신규 고객을 유치하기 위한 할인 행사를 늘려야 한다." },
@@ -231,6 +295,14 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
       "[듣기 대본 - 고급 교양 강연 유형]\n여자(강연자): 흔히 도시 재생 사업이라고 하면 낡은 건물을 허물고 고층 빌딩을 새로 짓는 재개발을 떠올리기 쉽습니다. 그러나 최근 주목받는 도시 재생은 기존 골목길의 역사적 맥락과 지역 공동체의 문화를 보존하면서 낙후된 기반 시설만 현대화하는 방식으로 진화하고 있습니다. 원주민들이 삶의 터전을 잃고 내몰리는 부작용을 막고, 그 지역만의 고유한 정체성을 살려 지속 가능한 활력을 불어넣는 것이 진정한 도시 재생의 핵심이기 때문입니다.",
     prompt_text:
       "[TOPIK II · 5~6급 듣기] 강연의 중심 내용으로 가장 알맞은 것을 고르십시오.",
+    correct_answer_text: "3",
+    explanations: {
+      ko: "강연자는 건물을 모두 허무는 재개발 대신 '역사적 맥락과 지역 공동체의 문화를 보존하면서 고유한 정체성을 살리는 것'이 도시 재생의 핵심이라고 역설하고 있습니다.",
+      en: "The speaker argues that true urban regeneration preserves local culture, historical context, and community identity rather than demolishing everything.",
+      vi: "Diễn giả nhấn mạnh tái thiết đô thị cần bảo tồn văn hóa bản địa, bối cảnh lịch sử và cộng đồng dân cư.",
+      zh: "演讲者指出，真正的城市再生应在保留当地历史脉络和社区文化的同时改善基础设施，守护地域独特性。",
+      ja: "講演者は、建物を壊す再開発ではなく「地域の歴史的文脈や共同体の文化を保存しつつ活性化させること」が都市再生の核心だと述べています。",
+    },
     options: [
       { option_number: 1, option_text: "도시의 경쟁력을 높이기 위해 고층 빌딩 건립을 확대해야 한다." },
       { option_number: 2, option_text: "역사적 가치가 있는 건물은 일체의 보수 없이 원형 그대로 두어야 한다." },
@@ -253,6 +325,14 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
       "출퇴근 시간에는 도로가 매우 혼잡해서 자가용을 ( ㉠ ) 지하철이나 버스를 타는 편이 훨씬 빠르다.",
     prompt_text:
       "[TOPIK II · 3급 읽기 (문법)] 빈칸 ( ㉠ )에 들어갈 가장 알맞은 문법을 고르십시오.",
+    correct_answer_text: "3",
+    explanations: {
+      ko: "앞의 행위(자가용 이용)보다 뒤의 행위(대중교통 이용)를 선택하는 것이 더 낫다는 비교·선택의 의미를 나타내는 연결어미 '-느니'(이용하느니)가 정답입니다.",
+      en: "'-느니' ('이용하느니') expresses that rather than doing the first action (driving a car), choosing the second action (taking the subway/bus) is much better.",
+      vi: "Ngữ pháp '-느니' dùng khi so sánh hai lựa chọn: thà đi tàu điện ngầm còn nhanh hơn lái xe cá nhân.",
+      zh: "语法“-느니”表示与其做前一项（开私家车），不如选择后一项（乘地铁或公交）更好。",
+      ja: "「-느니（〜するくらいなら・〜するよりは）」は、前の行動より後ろの行動を選ぶ方がましだという比較・選択を表します。",
+    },
     options: [
       { option_number: 1, option_text: "이용하느라고" },
       { option_number: 2, option_text: "이용하더라도" },
@@ -271,6 +351,14 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
       "아무리 뛰어난 재능을 타고났다고 할지라도 끊임없이 노력하지 않으면 실력이 제자리걸음을 하기 마련이다.",
     prompt_text:
       "[TOPIK II · 4급 읽기 (유의 문법)] 밑줄 친 '기 마련이다'와 바꿔 쓸 수 있는 표현을 고르십시오.",
+    correct_answer_text: "1",
+    explanations: {
+      ko: "'-기 마련이다'는 '당연히 그렇게 될 수밖에 없다'는 자연스러운 이치나 필연성을 나타내며, '-는 법이다'와 의미가 가장 유사합니다.",
+      en: "'-기 마련이다' means something is bound to happen naturally, which is synonymous with '-는 법이다'.",
+      vi: "'-기 마련이다' diễn tả quy luật tất yếu (ắt hẳn sẽ như vậy), đồng nghĩa với '-는 법이다'.",
+      zh: "“-기 마련이다”表示事情必然会那样发展，与“-는 법이다”（理所当然会……）意思最相近。",
+      ja: "「-기 마련이다（〜するものだ）」は当然の理屈・必然性を表し、「-는 법이다」と置き換えることができます。",
+    },
     options: [
       { option_number: 1, option_text: "는 법이다" },
       { option_number: 2, option_text: "기 나름이다" },
@@ -289,6 +377,14 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
       "(가) 그러나 무조건 잠을 줄이는 것은 건강에 해롭다.\n(나) 현대인들은 바쁜 일상 속에서 수면 시간을 줄이곤 한다.\n(다) 충분한 수면을 취해야 면역력이 유지되고 집중력도 높아진다.\n(라) 따라서 건강을 지키려면 하루 7시간 이상의 숙면이 필요하다.",
     prompt_text:
       "[TOPIK II · 3~4급 읽기 (문장 배열)] 다음 문장을 논리적 순서에 맞게 배열한 것을 고르십시오.",
+    correct_answer_text: "1",
+    explanations: {
+      ko: "(나)에서 일반적인 문제 현상을 제시한 후, (가)의 접속부사 '그러나'로 문제점을 지적하고, (다)에서 수면의 중요성을 설명한 뒤, (라)의 '따라서'로 결론을 짓는 흐름이 자연스럽습니다.",
+      en: "The logical sequence starts with (나) stating the general phenomenon, followed by (가) with 'however', explaining the reason in (다), and concluding with (라) 'therefore'.",
+      vi: "Trình tự hợp lý: (나) nêu hiện tượng -> (가) 'Tuy nhiên' chỉ ra tác hại -> (다) giải thích lý do -> (라) 'Do đó' kết luận.",
+      zh: "先由(나)提出普遍现象，再由(가)“但是”指出问题，接着(다)说明充足睡眠的重要性，最后(라)“因此”得出结论。",
+      ja: "(나)で一般的な現象を提示し、(가)「しかし」で問題点を指摘、(다)で理由を説明し、(라)「したがって」で結論づける流れが自然です。",
+    },
     options: [
       { option_number: 1, option_text: "(나) - (가) - (다) - (라)" },
       { option_number: 2, option_text: "(나) - (라) - (가) - (다)" },
@@ -307,6 +403,14 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
       "전통 시장 상인들이 침체된 상권을 살리기 위해 직접 ( ㉠ ). 상인들은 공동 배달 서비스를 도입하고 청년 창업가들과 협력하여 특색 있는 야시장을 열었다. 그 결과 시장을 찾는 젊은 방문객이 눈에 띄게 늘어났다.",
     prompt_text:
       "[TOPIK II · 4급 읽기 (관용어)] 빈칸 ( ㉠ )에 들어갈 가장 알맞은 관용 표현을 고르십시오.",
+    correct_answer_text: "2",
+    explanations: {
+      ko: "'발 벗고 나서다'는 어떤 일에 적극적으로 앞장서서 행동한다는 뜻의 필수 기출 관용구입니다. 상인들이 직접 공동 배달과 야시장을 추진했으므로 가장 적절합니다.",
+      en: "'발 벗고 나서다' means to step forward actively and wholeheartedly to solve a problem.",
+      vi: "'발 벗고 나서다' là quán용 ngữ mang nghĩa tích cực xắn tay áo đứng ra giải quyết công việc.",
+      zh: "“발 벗고 나서다”意为积极主动地挺身而出采取行动，符合商人们亲自推进外卖与夜市的语境。",
+      ja: "「발 벗고 나서다（一肌脱ぐ・積極的に乗り出す）」は、ある事に積極的に先頭に立って行動することを意味する頻出慣用句です。",
+    },
     options: [
       { option_number: 1, option_text: "귀를 기울였다" },
       { option_number: 2, option_text: "발 벗고 나섰다" },
@@ -325,6 +429,14 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
       "[신문 기사 제목: '반려동물 양육 가구 급증… 관련 산업 규모도 사상 최대치 경신']",
     prompt_text:
       "[TOPIK II · 4~5급 읽기 (신문 헤드라인)] 다음 신문 기사 제목을 가장 잘 설명한 것을 고르십시오.",
+    correct_answer_text: "4",
+    explanations: {
+      ko: "'양육 가구 급증(빠르게 늘어남)'과 '사상 최대치 경신(역대 가장 큰 기록을 새로 씀)'의 의미를 정확히 풀어낸 것은 4번입니다.",
+      en: "'양육 가구 급증' means households raising pets surged, and '사상 최대치 경신' means breaking the all-time high record.",
+      vi: "'급증' là tăng mạnh, '사상 최대치 경신' là lập kỷ lục cao nhất từ trước đến nay.",
+      zh: "“급증”意为激增，“사상 최대치 경신”意为刷新历史最高纪录，因此4号选项最准确。",
+      ja: "「급증（急増）」と「사상 최대치 경신（史上最大値の更新）」を最も適切に言い換えているのは4番です。",
+    },
     options: [
       { option_number: 1, option_text: "반려동물을 키우는 가구가 줄어들면서 관련 산업이 위축되고 있다." },
       { option_number: 2, option_text: "반려동물 관련 산업의 성장세가 멈추어 대책 마련이 시급하다." },
@@ -343,6 +455,14 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
       "정보 통신 기술의 발달과 소셜 미디어의 대중화로 누구나 손쉽게 정보를 생산하고 공유할 수 있는 환경이 조성되었다. 그러나 조회 수와 경제적 이익만을 노린 자극적인 허위 정보, 이른바 '가짜 뉴스'가 무분별하게 양산되면서 사회적 신뢰가 심각하게 훼손되고 있다. 더욱이 알고리즘 추천 시스템은 이용자가 선호하는 성향의 정보만 반복적으로 노출하는 '확증 편향'을 강화하여 사회적 갈등과 양극화를 부추기기도 한다. 따라서 플랫폼 기업의 자정 노력과 제도적 규제 못지않게, 수용자 스스로 정보의 진위를 비판적으로 검증하는 미디어 리터러시 역량을 함양하는 일이 시급하다.",
     prompt_text:
       "[TOPIK II · 5급 읽기 (논설문 중심 생각)] 다음 글의 중심 생각으로 가장 알맞은 것을 고르십시오.",
+    correct_answer_text: "3",
+    explanations: {
+      ko: "마지막 문장의 '따라서 플랫폼 기업의 자정 노력과 제도적 규제 못지않게, 수용자 스스로 정보의 진위를 비판적으로 검증하는 미디어 리터러시 역량을 함양하는 일이 시급하다'에 필자의 주장이 집약되어 있습니다.",
+      en: "The author concludes that alongside institutional regulations, cultivating media literacy to critically verify information is urgent.",
+      vi: "Tác giả nhấn mạnh bên cạnh quy định thể chế, người tiếp nhận cần nâng cao năng lực truyền thông (media literacy) để kiểm chứng thông tin.",
+      zh: "作者在末句总结道：除了平台自律和制度监管外，培养受众批判性甄别信息真伪的媒介素养同样迫在眉睫。",
+      ja: "筆者は最後の文で、制度的規制だけでなく「受け手自身が情報の真偽を批判的に検証するメディアリテラシーを養うことが急務だ」と主張しています。",
+    },
     options: [
       { option_number: 1, option_text: "소셜 미디어의 알고리즘 추천 기술을 전면 금지해야 한다." },
       { option_number: 2, option_text: "개인의 자유로운 정보 생산을 장려하기 위해 규제를 완화해야 한다." },
@@ -361,6 +481,14 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
       "예술 작품을 감상할 때 독자나 관객이 작가의 본래 의도를 있는 그대로 찾아내야만 올바른 감상이라고 여기는 시각이 존재한다. 물론 창작 당시의 시대적 배경과 작가의 전기적 사실을 이해하는 것은 작품 해석의 훌륭한 길잡이가 된다. 그러나 작품이 일단 세상에 발표된 순간부터 그것은 작가의 손을 떠나 독자적인 생명력을 지닌 열린 텍스트가 된다. 감상자가 자신이 처한 시대적 맥락과 고유한 삶의 경험에 비추어 작품에 새로운 의미를 부여할 때, 고전은 비로소 박제된 유물이 아니라 오늘날에도 살아 숨 쉬는 예술로 재탄생하는 것이다.",
     prompt_text:
       "[TOPIK II · 6급 읽기 (심화 비평문)] 필자의 태도로 가장 알맞은 것을 고르십시오.",
+    correct_answer_text: "2",
+    explanations: {
+      ko: "필자는 작품을 '열린 텍스트'로 규정하며, 감상자가 자신의 경험과 시대적 맥락에 비추어 새로운 의미를 부여할 때 작품이 살아 숨 쉬는 예술로 재탄생한다고 보는 입장입니다.",
+      en: "The author views artworks as 'open texts' whose value expands when audiences actively reinterpret them through their own context and experience.",
+      vi: "Tác giả coi tác phẩm nghệ thuật là 'văn bản mở', việc người thưởng thức chủ động tái diễn giải sẽ làm sống dậy giá trị tác phẩm.",
+      zh: "作者认为作品一旦发表便成为“开放文本”，鉴赏者结合自身时代背景与人生经验赋予其新意义，能使作品焕发新生。",
+      ja: "筆者は作品を「開かれたテクスト」と捉え、鑑賞者が主体的に新しい意味を付与することで作品の価値が広がると述べています。",
+    },
     options: [
       { option_number: 1, option_text: "작가의 창작 의도를 왜곡하는 주관적 해석을 경계하고 있다." },
       { option_number: 2, option_text: "감상자의 주체적인 재해석이 작품의 가치를 확장한다고 보고 있다." },
@@ -383,6 +511,12 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
       "[제목: 진료 예약 시간 변경 문의드립니다]\n\n안녕하세요, 인주치과 담당자님.\n저는 내일(금요일) 오후 2시에 김민수 원장님께 진료를 받기로 예약한 이수민입니다.\n다름이 아니라 내일 오후에 급한 회사 회의가 생겨서 예약한 시간에 병원에 ( ㉠ ).\n혹시 내일 오후 5시나 이번 주 토요일 오전으로 진료 시간을 ( ㉡ )?\n번거롭게 해 드려 죄송합니다. 확인 후 연락 부탁드립니다.",
     prompt_text:
       "[TOPIK II · 쓰기 51번 실용문 빈칸 완성 (10점)] 다음을 읽고 ㉠과 ㉡에 들어갈 말을 각각 한 문장으로 쓰십시오.",
+    correct_answer_text:
+      "㉠ 가기 어렵게 되었습니다 / 갈 수 없게 되었습니다 | ㉡ 변경할 수 있을까요 / 바꿀 수 있습니까",
+    explanations: {
+      ko: "51번 실용문은 정중한 높임법('-습니다/-ㅂ니다' 또는 '-아/어요')을 사용해야 합니다. ㉠에는 회의로 인해 예약 시간에 방문하지 못한다는 표현, ㉡에는 시간을 바꿀 수 있는지 묻는 의문형 표현을 씁니다.",
+      en: "Q51 requires polite honorifics ('-습니다' or '-아/어요'). In ㉠, explain you cannot make the appointment time; in ㉡, politely ask if you can reschedule.",
+    },
     options: [],
   },
   {
@@ -396,6 +530,12 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
       "집에서 화분에 식물을 기를 때 물을 자주 줄수록 식물이 잘 자랄 것이라고 생각하는 사람이 많다. 그러나 물을 너무 많이 주면 식물은 오히려 잘 자라지 못한다. 왜냐하면 흙 속에 물이 지나치게 많으면 공기가 통하지 않아 식물의 뿌리가 ( ㉠ ). 따라서 식물의 뿌리가 상하지 않게 하려면 정해진 날짜마다 무조건 물을 ( ㉡ ) 흙을 직접 만져 보아 말랐을 때 주는 것이 좋다.",
     prompt_text:
       "[TOPIK II · 쓰기 52번 설명문 빈칸 완성 (10점)] 다음을 읽고 ㉠과 ㉡에 들어갈 말을 문어체('-다/는다')와 문맥에 맞게 각각 쓰십시오.",
+    correct_answer_text:
+      "㉠ 썩기 때문이다 / 숨을 쉬지 못하기 때문이다 | ㉡ 주지 말고 / 주는 대신에",
+    explanations: {
+      ko: "52번 설명문은 반드시 문어체 평서형('-다/는다')을 사용해야 합니다. 앞의 '왜냐하면'에 호응하도록 ㉠에는 '-기 때문이다'를, ㉡에는 뒤 문장과 대조되도록 '-지 말고'를 씁니다.",
+      en: "Q52 explanatory writing requires formal written endings ('-다/는다'). Pair '왜냐하면' with '썩기 때문이다' in ㉠, and use '주지 말고' in ㉡.",
+    },
     options: [],
   },
   {
@@ -409,6 +549,10 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
       "[조사 주제: 인주시의 자전거 이용자 변화]\n\n1. 자전거 이용자 수 변화 (단위: 명)\n- 2007년: 4만 명  →  2012년: 9만 명  →  2017년: 21만 명 (10년간 약 5배 증가)\n\n2. 변화 이유\n- 자전거 도로 개발\n- 자전거 빌리는 곳 확대\n\n3. 이용 목적별 변화 (2007년 대비 2017년 증가 폭)\n- 운동 및 산책: 4배 증가\n- 출퇴근: 14배 증가 (가장 큰 폭으로 증가)\n- 기타: 3배 증가",
     prompt_text:
       "53. 다음을 참고하여 ‘인주시의 자전거 이용자 변화’에 대한 글을 200~300자로 쓰시오. 단, 글의 제목을 쓰지 마시오. (30점)",
+    explanations: {
+      ko: "자전거 이용자 수 변화(4만→9만→21만, 약 5배), 변화 이유(도로 개발·대여소 확대), 이용 목적별 증가 폭(출퇴근 14배, 운동 및 산책 4배, 기타 3배)을 문어체('-다/는다')로 200~300자로 작성하세요.",
+      en: "Summarize the growth in bicycle users (40k to 210k, ~5x), causes (bike paths and rental stations), and purpose growth rates (commuting 14x, exercise 4x, other 3x) in 200-300 chars.",
+    },
     options: [],
   },
   {
@@ -422,6 +566,10 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
       "[조사 기관: 인주시 통계청]\n주제: 온라인 쇼핑 이용 현황 및 소비자 만족 요인\n\n1. 온라인 쇼핑 시장 규모 변화\n- 2020년: 15조 원  →  2022년: 23조 원  →  2024년: 32조 원 (4년간 2배 이상 급증)\n\n2. 소비자 만족 요인 비중 (2024년 기준)\n- 배송의 신속성 (48%) > 가격 경쟁력 (32%) > 상품의 다양성 (20%)\n\n3. 향후 전망\n- 당일 배송 서비스 확대와 합리적 가격 혜택으로 온라인 쇼핑 시장의 지속적 성장 예상",
     prompt_text:
       "53. [그래프 유형 2] 다음을 참고하여 ‘온라인 쇼핑 이용 현황 및 만족 요인’에 대한 글을 200~300자로 쓰십시오. 단, 글의 제목을 쓰지 마십시오. (30점)",
+    explanations: {
+      ko: "도표의 수치 변화(15조 원→32조 원), 만족 요인 순위(배송 신속성 48%, 가격 경쟁력 32%, 상품 다양성 20%), 향후 전망을 객관적 문어체('-다/는다')로 200~300자 분량에 맞춰 서술해야 합니다.",
+      en: "Describe the market growth trend (15T -> 32T KRW), satisfaction ranking (fast delivery 48%, price 32%, variety 20%), and future outlook in 200-300 characters using formal endings ('-다/는다').",
+    },
     options: [],
   },
   {
@@ -435,6 +583,10 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
       "[조사 기관: 한국사회연구원 (제83회 기출 복원)]\n주제: 인주시의 가구 형태별 변화 추이 (2015년~2025년)\n\n1. 전체 가구 형태 비율 변화\n- 4인 이상 가구: 2015년 42%  →  2025년 21% (절반으로 감소)\n- 1인 가구: 2015년 18%  →  2025년 39% (2배 이상 급증하여 가장 높은 비중 차지)\n\n2. 1인 가구 증가 원인\n- 청년층의 독립 및 결혼관 변화\n- 고령화로 인한 독거노인 가구 증가\n\n3. 향후 과제\n- 1인 가구 맞춤형 소형 주택 공급 및 사회 안전망 확충 필요",
     prompt_text:
       "53. [그래프 유형 3] 다음 자료를 참고하여 ‘인주시의 가구 형태 변화와 원인’에 대한 글을 200~300자로 쓰십시오. 단, 글의 제목을 쓰지 마십시오. (30점)",
+    explanations: {
+      ko: "4인 이상 가구 비율 감소(42%→21%)와 1인 가구 비율 급증(18%→39%)을 대조('-는 반면')하여 서술하고, 청년층 결혼관 변화 및 고령화 원인과 향후 과제까지 200~300자로 작성합니다.",
+      en: "Contrast the decrease in 4+ person households (42%->21%) with the surge in 1-person households (18%->39%), explain the causes, and state future tasks in 200-300 characters.",
+    },
     options: [],
   },
   {
@@ -448,6 +600,10 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
       "[조사 기관: 한국출판문화연구소]\n주제: 성인의 전자책 독서율 변화 및 이용 이유\n\n1. 성인 전자책 독서율 변화 (단위: %)\n- 2019년: 16%  →  2021년: 27%  →  2023년: 41% (4년간 약 2.5배 급증)\n\n2. 전자책 선호 이유 (2023년 기준)\n- 휴대 및 보관의 편리성 (51%) > 저렴한 구매·구독 비용 (29%) > 오디오북 기능 지원 (20%)\n\n3. 향후 전망\n- 전자책 구독 서비스 확산으로 성인 전자책 이용률은 2026년 50% 돌파 전망",
     prompt_text:
       "53. [그래프 유형 4] 다음을 참고하여 ‘성인의 전자책 독서율 변화 및 이용 이유’에 대한 글을 200~300자로 쓰십시오. 단, 글의 제목을 쓰지 마십시오. (30점)",
+    explanations: {
+      ko: "전자책 독서율 상승 추이(16%→27%→41%), 선호 이유 순위(휴대·보관 편리성, 저렴한 비용, 오디오북 기능), 향후 전망을 문어체('-다/는다')로 200~300자로 작성하세요.",
+      en: "Describe the e-book readership rise (16%->27%->41%), reasons ranked by percentage, and future outlook in 200-300 chars using '-다/는다'.",
+    },
     options: [],
   },
   {
@@ -461,6 +617,10 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
       "현대 사회는 과학 기술의 발전과 경제 성장으로 물질적인 풍요를 이루었지만, 과도한 경쟁과 사회적 고립감으로 인해 현대인이 느끼는 행복지수는 오히려 낮아지고 있습니다. 진정한 행복을 실현하기 위한 개인적·사회적 노력에 대해 자신의 생각을 서술하십시오.\n\n[과제 수행 조건]\n1. 물질적 풍요 속에서도 현대인의 행복지수가 낮아지는 원인은 무엇인가?\n2. 행복한 삶을 위해 개인은 어떠한 태도와 가치관을 가져야 하는가?\n3. 사회와 제도는 구성원의 행복을 위해 어떤 환경을 조성해야 하는가?",
     prompt_text:
       "[TOPIK II · 쓰기 54번 논술 1 (50점)] 다음을 주제로 하여 자신의 생각을 600~700자로 글을 쓰십시오. 단, 문제를 그대로 옮겨 쓰지 마십시오.",
+    explanations: {
+      ko: "서론(문제 제기)-본론(원인 분석 및 개인·사회적 해결 방안)-결론(요약 및 제언)의 3단 구성을 갖추고 고급 어휘와 격식체('-다/는다')를 일관되게 사용해야 합니다.",
+      en: "Structure your essay into Introduction, Body (causes, individual & societal solutions), and Conclusion (600-700 chars) using advanced Korean vocabulary and formal written endings ('-다/는다').",
+    },
     options: [],
   },
   {
@@ -474,6 +634,10 @@ export const COMPREHENSIVE_QUESTIONS: QuestionItem[] = [
       "[제91회 기출 복원 주제: 가짜 뉴스(허위 정보)의 영향과 대응 방안]\n최근 인터넷과 소셜 미디어를 통해 사실이 아닌 '가짜 뉴스(허위 정보)'가 빠르게 퍼지면서 다양한 사회적 문제가 발생하고 있습니다. 가짜 뉴스의 확산 원인과 문제점을 살펴보고, 이를 해결하기 위한 방안에 대해 자신의 생각을 서술하십시오.\n\n[과제 수행 조건]\n1. 현대 사회에서 가짜 뉴스가 쉽게 생산되고 확산되는 배경은 무엇인가?\n2. 가짜 뉴스로 인해 개인과 사회가 겪는 부정적인 영향은 무엇인가?\n3. 가짜 뉴스 문제를 해결하기 위해 개인과 사회(정부·언론)는 어떤 노력을 기울여야 하는가?",
     prompt_text:
       "[TOPIK II · 쓰기 54번 제91회 기출 복원 2 (50점)] 다음을 주제로 하여 자신의 생각을 600~700자로 글을 쓰십시오. 단, 문제를 그대로 옮겨 쓰지 마십시오.",
+    explanations: {
+      ko: "제91회 실제 기출 테마인 '가짜 뉴스' 논술 문항입니다. 1) 뉴미디어의 익명성·경제적 유인·확증 편향(배경), 2) 사회적 불신과 갈등 심화(부작용), 3) 법적·제도적 규제 및 개인의 미디어 리터러시 함양(해결책)을 600~700자로 서술하세요.",
+      en: "Reconstructed 91st TOPIK Q54 on Fake News: address (1) causes of spread, (2) negative societal impacts, and (3) individual media literacy + institutional solutions in 600-700 chars.",
+    },
     options: [],
   },
 ];
@@ -1748,3 +1912,769 @@ export function getLocalizedQuestionExplanation(
     QUESTION_EXPLANATIONS_BY_NUM[key] || QUESTION_EXPLANATIONS_BY_NUM["READING-13"];
   return entry[lang] || entry.en || entry.ko;
 }
+
+export interface PassageVocabEntry {
+  lemma: string;
+  pronunciation: string;
+  pos: string;
+  grade: "초급" | "중급" | "고급";
+  ko: string;
+  trans: Record<string, [string, string]>;
+}
+
+export const PASSAGE_VOCAB_DICTIONARY: Record<string, PassageVocabEntry> = {
+  그러나: {
+    lemma: "그러나",
+    pronunciation: "그러나",
+    pos: "접속부사",
+    grade: "초급",
+    ko: "앞의 내용과 상반되는 내용을 이끌 때 쓰는 접속 부사.",
+    trans: {
+      en: ["however; but", "Conjunctive adverb introducing contrasting content."],
+      vi: ["tuy nhiên, nhưng", "Phó từ liên kết dẫn dắt nội dung trái ngược."],
+      zh: ["但是，然而", "用于引出与前面内容相反的转折副词。"],
+      ja: ["しかし。だが", "前の内容と相反する内容を導く接続副詞。"],
+    },
+  },
+  따라서: {
+    lemma: "따라서",
+    pronunciation: "따라서",
+    pos: "접속부사",
+    grade: "초급",
+    ko: "앞의 내용이 뒤의 내용의 이유나 근거가 될 때 쓰는 접속 부사.",
+    trans: {
+      en: ["therefore; consequently", "Used when the preceding statement is the reason or basis for the following conclusion."],
+      vi: ["do đó, vì vậy", "Dùng khi nội dung trước là lý do hoặc căn cứ của kết luận sau."],
+      zh: ["因此，所以", "表示前面内容是后面结论的原因或依据。"],
+      ja: ["したがって。それゆえ", "前の内容が後ろの結論の理由や根拠になる時に使う接続副詞。"],
+    },
+  },
+  무조건: {
+    lemma: "무조건",
+    pronunciation: "무조건",
+    pos: "부사",
+    grade: "중급",
+    ko: "아무런 조건이나 단서가 없이.",
+    trans: {
+      en: ["unconditionally; blindly", "Without any conditions or provisos."],
+      vi: ["vô điều kiện", "Không có bất kỳ điều kiện nào."],
+      zh: ["无条件地，盲目地", "没有任何条件或前提。"],
+      ja: ["無条件に。むやみに", "何の条件や前提もなしに。"],
+    },
+  },
+  현대인: {
+    lemma: "현대인",
+    pronunciation: "현대인",
+    pos: "명사",
+    grade: "중급",
+    ko: "현대 사회를 살아가는 사람.",
+    trans: {
+      en: ["modern people", "People living in contemporary society."],
+      vi: ["người hiện đại", "Những người sống trong xã hội hiện đại."],
+      zh: ["现代人", "生活在现代社会的人。"],
+      ja: ["現代人", "現代社会を生きている人々。"],
+    },
+  },
+  일상: {
+    lemma: "일상",
+    pronunciation: "일쌍",
+    pos: "명사",
+    grade: "중급",
+    ko: "날마다 반복되는 보통의 생활.",
+    trans: {
+      en: ["daily life; everyday routine", "Ordinary life repeated day after day."],
+      vi: ["đời sống hằng ngày", "Cuộc sống bình thường lặp lại mỗi ngày."],
+      zh: ["日常，日常生活", "每天重复的普通生活。"],
+      ja: ["日常", "毎日繰り返される普通の生活。"],
+    },
+  },
+  높아지다: {
+    lemma: "높아지다",
+    pronunciation: "노파지다",
+    pos: "동사",
+    grade: "초급",
+    ko: "수준, 정도, 위치 등이 이전보다 더 높아지다.",
+    trans: {
+      en: ["rise; become higher; increase", "For a level, degree, or height to become higher."],
+      vi: ["tăng cao, trở nên cao hơn", "Mức độ hoặc vị trí trở nên cao hơn trước."],
+      zh: ["提高，升高", "水平、程度、位置等比以前更高。"],
+      ja: ["高くなる。高まる", "水準や程度、位置などが以前より高くなる。"],
+    },
+  },
+  필요하다: {
+    lemma: "필요하다",
+    pronunciation: "피료하다",
+    pos: "형용사",
+    grade: "초급",
+    ko: "요구되는 바가 있다. 꼭 있어야 하다.",
+    trans: {
+      en: ["necessary; needed", "Required or essential."],
+      vi: ["cần thiết", "Có nhu cầu hoặc nhất thiết phải có."],
+      zh: ["需要，必要", "有所要求或不可缺少。"],
+      ja: ["必要だ", "求められるところがある。必ずなければならない。"],
+    },
+  },
+  지키다: {
+    lemma: "지키다",
+    pronunciation: "지키다",
+    pos: "동사",
+    grade: "초급",
+    ko: "규칙·약속을 어기지 않고 따르거나, 재산·건강 등을 보호하여 유지하다.",
+    trans: {
+      en: ["protect; keep; maintain", "To protect health/safety or abide by rules/promises."],
+      vi: ["giữ gìn, bảo vệ", "Bảo vệ và duy trì sức khỏe hoặc tuân thủ quy tắc."],
+      zh: ["守护，遵守", "保护并维持健康，或遵守规则约定。"],
+      ja: ["守る", "健康などを保護して維持する、または規則や約束を守る。"],
+    },
+  },
+  자전거: {
+    lemma: "자전거",
+    pronunciation: "자전거",
+    pos: "명사",
+    grade: "초급",
+    ko: "바퀴가 둘 달린 탈것으로 페달을 밟아 앞으로 가는 기구.",
+    trans: {
+      en: ["bicycle", "A two-wheeled vehicle driven by pedals."],
+      vi: ["xe đạp", "Phương tiện hai bánh di chuyển bằng bàn đạp."],
+      zh: ["自行车", "有两个轮子、通过踩踏板前进的交通工具。"],
+      ja: ["自転車", "ペダルを踏んで走る二輪の乗り物。"],
+    },
+  },
+  도로: {
+    lemma: "도로",
+    pronunciation: "도로",
+    pos: "명사",
+    grade: "초급",
+    ko: "사람이나 차가 다니도록 만든 비교적 넓은 길.",
+    trans: {
+      en: ["road; path", "A path or street made for vehicles or people."],
+      vi: ["đường phố, đường bộ", "Con đường rộng dành cho người hoặc xe cộ đi lại."],
+      zh: ["道路", "供行人或车辆通行的较宽的路。"],
+      ja: ["道路", "人や車が通るように作られた道。"],
+    },
+  },
+  확대: {
+    lemma: "확대",
+    pronunciation: "확때",
+    pos: "명사",
+    grade: "중급",
+    ko: "규모나 범위 등을 더 크게 넓힘.",
+    trans: {
+      en: ["expansion; enlargement", "Making the scale, scope, or size larger."],
+      vi: ["sự mở rộng", "Làm cho quy mô hoặc phạm vi lớn hơn."],
+      zh: ["扩大", "使规模或范围变得更大。"],
+      ja: ["拡大", "規模や範囲などをより大きく広げること。"],
+    },
+  },
+  출퇴근: {
+    lemma: "출퇴근",
+    pronunciation: "출퇴근",
+    pos: "명사",
+    grade: "중급",
+    ko: "직장에 나가는 일과 근무를 마치고 집으로 돌아오는 일.",
+    trans: {
+      en: ["commuting (to and from work)", "Going to work and returning home."],
+      vi: ["đi làm và tan làm", "Việc đi đến nơi làm việc và trở về nhà."],
+      zh: ["上下班", "去上班和下班回家的往返。"],
+      ja: ["通勤", "職場に出勤することと退勤すること。"],
+    },
+  },
+  전자책: {
+    lemma: "전자책",
+    pronunciation: "전자책",
+    pos: "명사",
+    grade: "중급",
+    ko: "종이 책의 내용을 디지털 데이터로 저장하여 컴퓨터나 스마트폰 등으로 읽을 수 있게 만든 책.",
+    trans: {
+      en: ["e-book", "A book published in digital form readable on screens."],
+      vi: ["sách điện tử", "Sách ở dạng dữ liệu số đọc trên thiết bị điện tử."],
+      zh: ["电子书", "以数字形式保存并在电子设备上阅读的书籍。"],
+      ja: ["電子書籍", "デジタルデータとして画面で読めるようにした本。"],
+    },
+  },
+  독서율: {
+    lemma: "독서율",
+    pronunciation: "독써율",
+    pos: "명사",
+    grade: "고급",
+    ko: "전체 인구 중에서 일정 기간 동안 책을 읽은 사람의 비율.",
+    trans: {
+      en: ["reading rate; readership rate", "The proportion of people who read books within a period."],
+      vi: ["tỷ lệ đọc sách", "Tỷ lệ người đọc sách trong tổng dân số."],
+      zh: ["阅读率", "在一定时期内读书人数所占的比率。"],
+      ja: ["読書率", "一定期間内に本を読んだ人の割合。"],
+    },
+  },
+  공원: {
+    lemma: "공원",
+    pronunciation: "공원",
+    pos: "명사",
+    grade: "초급",
+    ko: "여러 사람이 휴식이나 산책을 즐길 수 있도록 꾸며 놓은 정원이나 터.",
+    trans: {
+      en: ["park", "A public green area for rest and recreation."],
+      vi: ["công viên", "Khuôn viên cây xanh dành cho mọi người nghỉ ngơi, dạo chơi."],
+      zh: ["公园", "供大众休息或散步的公共园林场所。"],
+      ja: ["公園", "人々が休息や散歩を楽しめるように整えられた場所。"],
+    },
+  },
+  병원: {
+    lemma: "병원",
+    pronunciation: "병원",
+    pos: "명사",
+    grade: "초급",
+    ko: "아픈 사람을 진찰하고 치료하는 의료 시설.",
+    trans: {
+      en: ["hospital; clinic", "A medical facility where sick people are examined and treated."],
+      vi: ["bệnh viện", "Cơ sở y tế khám và điều trị cho người bệnh."],
+      zh: ["医院", "诊治病人的医疗机构。"],
+      ja: ["病院", "病気の人を診察・治療する医療施設。"],
+    },
+  },
+  감기: {
+    lemma: "감기",
+    pronunciation: "감기",
+    pos: "명사",
+    grade: "초급",
+    ko: "기침, 콧물, 열 등이 나는 가벼운 호흡기 질환.",
+    trans: {
+      en: ["common cold", "A mild respiratory illness with coughing, runny nose, or fever."],
+      vi: ["cảm cúm, cảm lạnh", "Bệnh hô hấp nhẹ gây ho, sổ mũi, sốt."],
+      zh: ["感冒", "伴有咳嗽、流鼻涕、发烧等症状的轻微呼吸道疾病。"],
+      ja: ["風邪", "咳や鼻水、熱などが出る軽い呼吸器疾患。"],
+    },
+  },
+  날씨: {
+    lemma: "날씨",
+    pronunciation: "날씨",
+    pos: "명사",
+    grade: "초급",
+    ko: "그날그날의 기온, 비, 바람, 구름 등의 대기 상태.",
+    trans: {
+      en: ["weather", "Atmospheric conditions such as temperature, rain, and wind."],
+      vi: ["thời tiết", "Trạng thái khí quyển như nhiệt độ, mưa, gió hằng ngày."],
+      zh: ["天气", "每天的气温、雨、风、云等大气状况。"],
+      ja: ["天気", "その日その日の気温や雨、風などの大気の状態。"],
+    },
+  },
+  춥다: {
+    lemma: "춥다",
+    pronunciation: "춥따",
+    pos: "형용사",
+    grade: "초급",
+    ko: "날씨나 기온이 낮아 서늘하거나 차갑다.",
+    trans: {
+      en: ["cold", "Having a low temperature (weather/air)."],
+      vi: ["lạnh", "Thời tiết hoặc nhiệt độ thấp, rét."],
+      zh: ["冷，寒冷", "天气或气温低而感到寒凉。"],
+      ja: ["寒い", "気候や気温が低く冷たい。"],
+    },
+  },
+  덥다: {
+    lemma: "덥다",
+    pronunciation: "덥따",
+    pos: "형용사",
+    grade: "초급",
+    ko: "기온이 높아 열기가 느껴지다.",
+    trans: {
+      en: ["hot; warm", "Having a high temperature (weather/air)."],
+      vi: ["nóng", "Nhiệt độ cao, cảm thấy oi bức."],
+      zh: ["热，炎热", "气温高而感到热。"],
+      ja: ["暑い", "気温が高く熱気を感じる。"],
+    },
+  },
+  따뜻하다: {
+    lemma: "따뜻하다",
+    pronunciation: "따뜨타다",
+    pos: "형용사",
+    grade: "초급",
+    ko: "기온이나 느낌이 춥지 않고 적당히 훈훈하다.",
+    trans: {
+      en: ["warm", "Pleasantly warm and cozy."],
+      vi: ["ấm áp", "Không lạnh, có cảm giác ấm vừa phải."],
+      zh: ["温暖，暖和", "不冷且温度适宜让人感到舒暖。"],
+      ja: ["暖かい", "寒くなく適度にぬくもりがある。"],
+    },
+  },
+  시설: {
+    lemma: "시설",
+    pronunciation: "시설",
+    pos: "명사",
+    grade: "초급",
+    ko: "일정한 목적을 위해 설치한 건물, 설비, 장치 등.",
+    trans: {
+      en: ["facility; equipment", "Buildings, equipment, or installations built for a purpose."],
+      vi: ["cơ sở vật chất, thiết bị", "Công trình, trang thiết bị lắp đặt cho mục đích nhất định."],
+      zh: ["设施", "为特定目的建造的建筑物、设备或装置。"],
+      ja: ["施設", "一定の目的のために設けられた建物や設備。"],
+    },
+  },
+  수리: {
+    lemma: "수리",
+    pronunciation: "수리",
+    pos: "명사",
+    grade: "초급",
+    ko: "고장 나거나 낡은 것을 고침.",
+    trans: {
+      en: ["repair; maintenance", "Fixing something broken or worn out."],
+      vi: ["sửa chữa", "Việc sửa lại đồ đạc, thiết bị bị hỏng."],
+      zh: ["修理，维修", "修理损坏或陈旧的物品。"],
+      ja: ["修理", "壊れたり古くなったりしたものを直すこと。"],
+    },
+  },
+  이용하다: {
+    lemma: "이용하다",
+    pronunciation: "이용하다",
+    pos: "동사",
+    grade: "초급",
+    ko: "대상을 필요에 따라 이롭게 쓰다.",
+    trans: {
+      en: ["use; utilize", "To make use of a service, facility, or thing."],
+      vi: ["sử dụng, tận dụng", "Dùng phương tiện, dịch vụ hoặc đồ vật theo nhu cầu."],
+      zh: ["利用，使用", "根据需要有效使用某种设施或工具。"],
+      ja: ["利用する", "対象を必要に応じて役立てて使う。"],
+    },
+  },
+  자막: {
+    lemma: "자막",
+    pronunciation: "자막",
+    pos: "명사",
+    grade: "초급",
+    ko: "영화나 방송 화면 아래에 대사나 설명을 글자로 나타내는 것.",
+    trans: {
+      en: ["subtitles; captions", "Text displayed on screen translating or transcribing dialogue."],
+      vi: ["phụ đề", "Chữ hiển thị trên màn hình phim hoặc truyền hình."],
+      zh: ["字幕", "显示在影视屏幕下方用于说明或翻译对白的文字。"],
+      ja: ["字幕", "映画や放送画面にセリフや説明を文字で表示したもの。"],
+    },
+  },
+  표현: {
+    lemma: "표현",
+    pronunciation: "표현",
+    pos: "명사",
+    grade: "초급",
+    ko: "생각이나 느낌을 말, 글, 몸짓 등으로 겉으로 드러내어 나타냄.",
+    trans: {
+      en: ["expression", "Conveying thoughts or feelings through words, writing, or gestures."],
+      vi: ["biểu hiện, cách diễn đạt", "Sự thể hiện suy nghĩ hoặc cảm xúc bằng lời nói, chữ viết."],
+      zh: ["表达，表现", "将想法或感受通过语言、文字等表现出来。"],
+      ja: ["表現", "考えや感情を言葉や文章、身振りなどで表すこと。"],
+    },
+  },
+  어렵다: {
+    lemma: "어렵다",
+    pronunciation: "어렵따",
+    pos: "형용사",
+    grade: "초급",
+    ko: "하기가 까다롭거나 힘들다.",
+    trans: {
+      en: ["difficult; hard", "Challenging or hard to do."],
+      vi: ["khó khăn", "Khó thực hiện hoặc phức tạp."],
+      zh: ["困难，难", "做起来费劲或复杂。"],
+      ja: ["難しい", "行うのが大変である。"],
+    },
+  },
+  수정하다: {
+    lemma: "수정하다",
+    pronunciation: "수정하다",
+    pos: "동사",
+    grade: "중급",
+    ko: "잘못되거나 부족한 부분을 바로잡아 고치다.",
+    trans: {
+      en: ["revise; modify; edit", "To correct errors or update a draft/data."],
+      vi: ["chỉnh sửa, sửa đổi", "Sửa lại những phần sai sót hoặc chưa đạt."],
+      zh: ["修改，修正", "改正错误或不足之处。"],
+      ja: ["修正する", "誤りや不十分な箇所を直して改める。"],
+    },
+  },
+  출력하다: {
+    lemma: "출력하다",
+    pronunciation: "출려카다",
+    pos: "동사",
+    grade: "중급",
+    ko: "컴퓨터에 저장된 문서나 그림을 프린터로 인쇄하여 내보내다.",
+    trans: {
+      en: ["print out; output", "To print a digital document or output data."],
+      vi: ["in ấn, xuất dữ liệu", "In tài liệu từ máy tính ra giấy."],
+      zh: ["打印输出", "将电脑中的文件或图表通过打印机输出。"],
+      ja: ["出力する。プリントアウトする", "コンピューターの文書や画像を印刷して出す。"],
+    },
+  },
+  비치하다: {
+    lemma: "비치하다",
+    pronunciation: "비치하다",
+    pos: "동사",
+    grade: "중급",
+    ko: "필요할 때 쓸 수 있도록 일정한 곳에 미리 갖추어 두다.",
+    trans: {
+      en: ["place; furnish; stock", "To set out or equip items in a designated place for use."],
+      vi: ["bố trí, đặt sẵn", "Chuẩn bị và đặt sẵn ở một nơi để tiện sử dụng."],
+      zh: ["配备，放置", "预先把所需物品放置在固定位置以供使用。"],
+      ja: ["備え付ける", "必要な時に使えるよう一定の場所に置いておく。"],
+    },
+  },
+  재방문율: {
+    lemma: "재방문율",
+    pronunciation: "재방문뉼",
+    pos: "명사",
+    grade: "고급",
+    ko: "한 번 방문한 고객이 다시 찾아오는 비율.",
+    trans: {
+      en: ["revisit rate; retention rate", "The percentage of visitors who return again."],
+      vi: ["tỷ lệ quay lại", "Tỷ lệ khách hàng quay trở lại sau lần đầu đến thăm."],
+      zh: ["回头率，复访率", "顾客首次光顾后再次访问的比率。"],
+      ja: ["再訪問率。リピート率", "一度訪れた顧客が再び訪れる割合。"],
+    },
+  },
+  정체되다: {
+    lemma: "정체되다",
+    pronunciation: "정체되다",
+    pos: "동사",
+    grade: "고급",
+    ko: "발전이나 진행이 제자리에 머물러 나아가지 못하다.",
+    trans: {
+      en: ["stagnate", "To remain stuck without progress or growth."],
+      vi: ["bị đình trệ", "Giậm chân tại chỗ, không tiến triển thêm."],
+      zh: ["停滞", "停止不前，没有发展或进展。"],
+      ja: ["停滞する", "発展や進行が同じ場所にとどまって進まない。"],
+    },
+  },
+  분석하다: {
+    lemma: "분석하다",
+    pronunciation: "분서카다",
+    pos: "동사",
+    grade: "중급",
+    ko: "복잡한 대상이나 자료를 여러 요소로 나누어 자세히 살피다.",
+    trans: {
+      en: ["analyze", "To examine data or phenomena in detail by breaking them down."],
+      vi: ["phân tích", "Chia nhỏ đối tượng hoặc dữ liệu để xem xét kỹ lưỡng."],
+      zh: ["分析", "将复杂对象或资料分解并仔细研究。"],
+      ja: ["分析する", "対象や資料を要素に分けて詳しく調べる。"],
+    },
+  },
+  개선하다: {
+    lemma: "개선하다",
+    pronunciation: "개선하다",
+    pos: "동사",
+    grade: "중급",
+    ko: "잘못된 점이나 부족한 부분을 고쳐 더 좋게 만들다.",
+    trans: {
+      en: ["improve; ameliorate", "To fix shortcomings and make something better."],
+      vi: ["cải thiện", "Sửa đổi khuyết điểm để trở nên tốt hơn."],
+      zh: ["改善，改进", "修改缺点或不足使之变得更好。"],
+      ja: ["改善する", "悪い点や不足した部分を直してより良くする。"],
+    },
+  },
+  보존하다: {
+    lemma: "보존하다",
+    pronunciation: "보존하다",
+    pos: "동사",
+    grade: "고급",
+    ko: "원래의 상태나 가치가 훼손되지 않도록 잘 보호하여 남기다.",
+    trans: {
+      en: ["preserve; conserve", "To protect and keep something intact without damage."],
+      vi: ["bảo tồn", "Giữ gìn nguyên vẹn không để bị hư hại."],
+      zh: ["保存，保护", "妥善保护使其原有状态或价值不被破坏。"],
+      ja: ["保存する", "元の状態や価値が損なわれないよう大切に守り残す。"],
+    },
+  },
+  정체성: {
+    lemma: "정체성",
+    pronunciation: "정체썽",
+    pos: "명사",
+    grade: "고급",
+    ko: "변하지 않는 존재의 본질이나 고유한 특성.",
+    trans: {
+      en: ["identity", "The distinctive essence or unique character of something."],
+      vi: ["bản sắc", "Bản chất không đổi hoặc đặc trưng riêng biệt."],
+      zh: ["本质，独特性，认同感", "事物不变的本质或固有特征。"],
+      ja: ["アイデンティティ。独自性", "変わらない存在の本質や固有の特性。"],
+    },
+  },
+  혼잡하다: {
+    lemma: "혼잡하다",
+    pronunciation: "혼자파다",
+    pos: "형용사",
+    grade: "중급",
+    ko: "사람이나 차량이 한꺼번에 많이 몰려 어수선하고 복잡하다.",
+    trans: {
+      en: ["congested; crowded", "Heavily packed with traffic or people."],
+      vi: ["đông đúc, ùn tắc", "Nhiều người hoặc xe cộ dồn lại gây lộn xộn."],
+      zh: ["拥挤，混乱", "人或车辆聚集而拥堵杂乱。"],
+      ja: ["混雑している", "人や車が多く集まって混み合っている。"],
+    },
+  },
+  자가용: {
+    lemma: "자가용",
+    pronunciation: "자가용",
+    pos: "명사",
+    grade: "중급",
+    ko: "개인이 직접 소유하여 타고 다니는 자동차.",
+    trans: {
+      en: ["private car; personal vehicle", "A car owned and driven by an individual."],
+      vi: ["xe hơi riêng", "Ô tô thuộc sở hữu cá nhân dùng để đi lại."],
+      zh: ["私家车", "个人拥有并驾驶的汽车。"],
+      ja: ["自家用車", "個人が所有して乗る自動車。"],
+    },
+  },
+  제자리걸음: {
+    lemma: "제자리걸음",
+    pronunciation: "제자리거름",
+    pos: "명사",
+    grade: "고급",
+    ko: "앞으로 나아가지 못하고 그 자리에 머물러 있는 상태.",
+    trans: {
+      en: ["marking time; stagnation", "Remaining in the same place without advancing."],
+      vi: ["giậm chân tại chỗ", "Trạng thái không tiến triển mà đứng yên một chỗ."],
+      zh: ["原地踏步", "没有向前发展而停留在原地。"],
+      ja: ["足踏み", "前に進まず同じ場所にとどまっている状態。"],
+    },
+  },
+  상권: {
+    lemma: "상권",
+    pronunciation: "상꿘",
+    pos: "명사",
+    grade: "고급",
+    ko: "상업 활동이 이루어지는 지역적 범위.",
+    trans: {
+      en: ["commercial district; trade area", "A geographical area of business and retail activity."],
+      vi: ["khu thương mại", "Phạm vi khu vực diễn ra các hoạt động buôn bán."],
+      zh: ["商圈", "开展商业活动的地域范围。"],
+      ja: ["商圏", "商業活動が行われる地域的範囲。"],
+    },
+  },
+  반려동물: {
+    lemma: "반려동물",
+    pronunciation: "발려동물",
+    pos: "명사",
+    grade: "중급",
+    ko: "사람이 정서적으로 의지하며 함께 살아가는 동물.",
+    trans: {
+      en: ["companion animal; pet", "An animal kept for companionship."],
+      vi: ["thú cưng, vật nuôi", "Động vật sống cùng và gắn bó tình cảm với con người."],
+      zh: ["伴侣动物，宠物", "与人类共同生活并带来情感陪伴的动物。"],
+      ja: ["伴侶動物。ペット", "人が精神的に寄り添いながら共に暮らす動物。"],
+    },
+  },
+  양육: {
+    lemma: "양육",
+    pronunciation: "양뉵",
+    pos: "명사",
+    grade: "고급",
+    ko: "아이나 동물을 보살펴 기름.",
+    trans: {
+      en: ["raising; nurturing; rearing", "Caring for and raising children or animals."],
+      vi: ["nuôi dưỡng", "Chăm sóc và nuôi nấng trẻ em hoặc động vật."],
+      zh: ["养育，饲养", "照料并抚养孩子或动物。"],
+      ja: ["養育", "子どもや動物を世話して育てること。"],
+    },
+  },
+  허위: {
+    lemma: "허위",
+    pronunciation: "허위",
+    pos: "명사",
+    grade: "고급",
+    ko: "사실이 아닌 거짓.",
+    trans: {
+      en: ["falsehood; fabrication", "Something untrue or fabricated."],
+      vi: ["giả mạo, sai sự thật", "Điều không đúng sự thật, giả dối."],
+      zh: ["虚假，虚伪", "并非事实的假话或伪造内容。"],
+      ja: ["虚偽", "事実ではない嘘や偽り。"],
+    },
+  },
+  확증편향: {
+    lemma: "확증 편향",
+    pronunciation: "확쯩 편향",
+    pos: "명사",
+    grade: "고급",
+    ko: "자신의 신념이나 선입견과 일치하는 정보만 받아들이고 반대되는 정보는 무시하는 경향.",
+    trans: {
+      en: ["confirmation bias", "The tendency to favor information confirming one's existing beliefs."],
+      vi: ["thiên kiến xác nhận", "Xu hướng chỉ tin vào thông tin phù hợp với định kiến sẵn có."],
+      zh: ["确认偏误", "只接受符合自身既有观点的信息而忽视相反证据的心理倾向。"],
+      ja: ["確証バイアス", "自分の信念に合う情報だけを受け入れ、反する情報を無視する傾向。"],
+    },
+  },
+  비판적: {
+    lemma: "비판적",
+    pronunciation: "비판쩍",
+    pos: "관형사/명사",
+    grade: "고급",
+    ko: "사물이나 정보의 옳고 그름을 따져 가려내는 태도를 지닌 것.",
+    trans: {
+      en: ["critical", "Evaluating the validity and truth of claims carefully."],
+      vi: ["mang tính phản biện", "Thái độ xem xét, đánh giá đúng sai một cách khách quan."],
+      zh: ["批判性的", "仔细甄别事物或信息是非曲直的态度。"],
+      ja: ["批判的", "物事や情報の是非を見極めようとする態度。"],
+    },
+  },
+  검증하다: {
+    lemma: "검증하다",
+    pronunciation: "검증하다",
+    pos: "동사",
+    grade: "고급",
+    ko: "어떤 사실이나 진위를 정확히 검사하여 증명하다.",
+    trans: {
+      en: ["verify; fact-check", "To examine and confirm the truth or accuracy of something."],
+      vi: ["kiểm chứng", "Kiểm tra chính xác tính đúng sai của một sự thật."],
+      zh: ["验证，核查", "准确检查并证明某事实的真伪。"],
+      ja: ["検証する", "ある事実や真偽を正確に調べて証明する。"],
+    },
+  },
+  시급하다: {
+    lemma: "시급하다",
+    pronunciation: "시그파다",
+    pos: "형용사",
+    grade: "고급",
+    ko: "시간이 촉박하여 당장 해결하거나 처리해야 할 정도로 급하다.",
+    trans: {
+      en: ["urgent; pressing", "Requiring immediate action or solution."],
+      vi: ["cấp bách, khẩn cấp", "Rất gấp, cần giải quyết ngay lập tức."],
+      zh: ["紧迫，迫在眉睫", "时间紧迫、急需立刻解决。"],
+      ja: ["差し迫っている。急務だ", "すぐに対処しなければならないほど急を要する。"],
+    },
+  },
+  재해석: {
+    lemma: "재해석",
+    pronunciation: "재해석",
+    pos: "명사",
+    grade: "고급",
+    ko: "이미 있던 해석을 새로운 관점이나 맥락에서 다시 해석함.",
+    trans: {
+      en: ["reinterpretation", "Interpreting something anew from a fresh perspective."],
+      vi: ["tái diễn giải", "Giải thích lại theo góc nhìn hoặc bối cảnh mới."],
+      zh: ["重新诠释", "从新的视角或背景出发再次解读。"],
+      ja: ["再解釈", "新しい視点や文脈から捉え直すこと。"],
+    },
+  },
+  식물: {
+    lemma: "식물",
+    pronunciation: "싱물",
+    pos: "명사",
+    grade: "초급",
+    ko: "잎·줄기·뿌리를 가지고 광합성을 하며 살아가는 생물.",
+    trans: {
+      en: ["plant", "A living organism such as trees, flowers, or grass."],
+      vi: ["thực vật, cây cối", "Sinh vật có rễ, thân, lá như cây hoa."],
+      zh: ["植物", "具有根茎叶并能进行光合作用的生物。"],
+      ja: ["植物", "葉や茎、根を持ち光合成をして生きる生物。"],
+    },
+  },
+  뿌리: {
+    lemma: "뿌리",
+    pronunciation: "뿌리",
+    pos: "명사",
+    grade: "중급",
+    ko: "식물의 땅속에 묻혀 수분과 양분을 빨아들이는 부분.",
+    trans: {
+      en: ["root", "The underground part of a plant absorbing water and nutrients."],
+      vi: ["rễ cây", "Bộ phận dưới đất của cây hút nước và chất dinh dưỡng."],
+      zh: ["根，根部", "植物埋在地下吸收水分和养分的部分。"],
+      ja: ["根", "植物の地中にあって水分や養分を吸い上げる部分。"],
+    },
+  },
+  썩다: {
+    lemma: "썩다",
+    pronunciation: "썩따",
+    pos: "동사",
+    grade: "중급",
+    ko: "유기물이 세균이나 습기 때문에 상하여 못 쓰게 되다.",
+    trans: {
+      en: ["rot; decay", "To decompose or spoil due to moisture or bacteria."],
+      vi: ["bị thối, mục nát", "Bị hư hỏng, phân hủy do ẩm ướt hoặc vi khuẩn."],
+      zh: ["腐烂", "因受潮或细菌作用而变质坏掉。"],
+      ja: ["腐る", "水分や細菌などのせいで傷んで駄目になる。"],
+    },
+  },
+  규모: {
+    lemma: "규모",
+    pronunciation: "규모",
+    pos: "명사",
+    grade: "중급",
+    ko: "사물이나 현상의 크기나 범위.",
+    trans: {
+      en: ["scale; size", "The size, scope, or extent of something."],
+      vi: ["quy mô", "Kích thước hoặc phạm vi của sự vật, hiện tượng."],
+      zh: ["规模", "事物或现象的大小或范围。"],
+      ja: ["規模", "物事や現象の大きさや範囲。"],
+    },
+  },
+  가구: {
+    lemma: "가구",
+    pronunciation: "가구",
+    pos: "명사",
+    grade: "중급",
+    ko: "생계를 같이하는 가족이나 사람의 집단(세대). 또는 집안에서 쓰는 기구.",
+    trans: {
+      en: ["household; furniture", "A family/residential unit, or household furniture."],
+      vi: ["hộ gia đình", "Đơn vị gia đình cùng sinh sống."],
+      zh: ["家庭（户），家具", "共同生活的家庭单位，或室内用具。"],
+      ja: ["世帯。家具", "生計を共にする家族単位、または家で使う道具。"],
+    },
+  },
+  감소하다: {
+    lemma: "감소하다",
+    pronunciation: "감소하다",
+    pos: "동사",
+    grade: "중급",
+    ko: "양이나 수치가 줄어들다.",
+    trans: {
+      en: ["decrease; decline", "To become smaller in amount or number."],
+      vi: ["giảm xuống", "Số lượng hoặc tỷ lệ trở nên ít đi."],
+      zh: ["减少，下降", "数量或数值变小。"],
+      ja: ["減少する", "量や数値が減る。"],
+    },
+  },
+  고령화: {
+    lemma: "고령화",
+    pronunciation: "고령화",
+    pos: "명사",
+    grade: "고급",
+    ko: "전체 인구 가운데 노인 인구가 차지하는 비율이 점점 높아지는 현상.",
+    trans: {
+      en: ["aging (of population)", "The increasing proportion of elderly people in a society."],
+      vi: ["già hóa dân số", "Hiện tượng tỷ lệ người cao tuổi trong dân số ngày càng tăng."],
+      zh: ["老龄化", "总人口中老年人口所占比例不断上升的现象。"],
+      ja: ["高齢化", "総人口に占める高齢者人口の割合が高くなる現象。"],
+    },
+  },
+  풍요: {
+    lemma: "풍요",
+    pronunciation: "풍요",
+    pos: "명사",
+    grade: "고급",
+    ko: "물질이나 정신적인 면이 넉넉하고 풍족함.",
+    trans: {
+      en: ["abundance; affluence", "Having plenty of material or spiritual wealth."],
+      vi: ["sự sung túc, phong phú", "Sự đầy đủ, dư dả về vật chất hoặc tinh thần."],
+      zh: ["富足，丰饶", "物质或精神方面充裕丰富。"],
+      ja: ["豊かさ。富裕", "物質的・精神的に満ち足りて豊かなこと。"],
+    },
+  },
+  행복지수: {
+    lemma: "행복지수",
+    pronunciation: "행복지쑤",
+    pos: "명사",
+    grade: "중급",
+    ko: "사람들이 느끼는 행복의 정도를 수치로 나타낸 지표.",
+    trans: {
+      en: ["happiness index", "An indicator measuring the level of perceived happiness."],
+      vi: ["chỉ số hạnh phúc", "Chỉ số đo lường mức độ hạnh phúc của con người."],
+      zh: ["幸福指数", "以数值表示人们感受到的幸福程度的指标。"],
+      ja: ["幸福指数", "人々が感じる幸福の度合いを数値で表した指標。"],
+    },
+  },
+  확충하다: {
+    lemma: "확충하다",
+    pronunciation: "확충하다",
+    pos: "동사",
+    grade: "고급",
+    ko: "시설, 제도, 인력 등을 늘려 튼튼하게 채우다.",
+    trans: {
+      en: ["expand and strengthen", "To expand and reinforce facilities, systems, or resources."],
+      vi: ["mở rộng và củng cố", "Tăng cường và bổ sung cơ sở hạ tầng hoặc hệ thống."],
+      zh: ["扩充", "扩大并充实设施、制度或人力等。"],
+      ja: ["拡充する", "施設や制度などを広げて充実させる。"],
+    },
+  },
+};

@@ -68,10 +68,17 @@ export default function AuthModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-      <div className="relative w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-3 backdrop-blur-sm sm:p-4"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="relative max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-3xl border border-slate-200 bg-white p-4 shadow-2xl sm:p-6"
+      >
         <button
           type="button"
+          aria-label="로그인 창 닫기"
           onClick={onClose}
           className="absolute right-4 top-4 rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
         >
@@ -172,14 +179,14 @@ export default function AuthModal({
                   {isKo ? "이메일" : "Email"}
                 </label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                  <Mail className="absolute left-3 top-3 h-4 w-4 text-slate-400 sm:top-2.5" />
                   <input
                     type="email"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="student@example.com"
-                    className="w-full rounded-xl border border-slate-300 py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none"
+                    className="w-full rounded-xl border border-slate-300 py-2.5 pl-9 pr-3 text-base focus:border-blue-500 focus:outline-none sm:py-2 sm:text-sm"
                   />
                 </div>
               </div>
@@ -189,7 +196,7 @@ export default function AuthModal({
                   {isKo ? "비밀번호 (6자 이상)" : "Password (6+ chars)"}
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                  <Lock className="absolute left-3 top-3 h-4 w-4 text-slate-400 sm:top-2.5" />
                   <input
                     type="password"
                     required
@@ -197,7 +204,7 @@ export default function AuthModal({
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full rounded-xl border border-slate-300 py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none"
+                    className="w-full rounded-xl border border-slate-300 py-2.5 pl-9 pr-3 text-base focus:border-blue-500 focus:outline-none sm:py-2 sm:text-sm"
                   />
                 </div>
               </div>

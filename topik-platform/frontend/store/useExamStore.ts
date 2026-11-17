@@ -9,6 +9,36 @@ export interface UserAnswerDraft {
 
 export const DEFAULT_QUESTIONS: QuestionItem[] = COMPREHENSIVE_QUESTIONS;
 
+const STORAGE_KEY = "global-topik-ibt-state-v1";
+
+interface PersistedExamState {
+  selectedLanguage?: string;
+  targetLevel?: number;
+  answers?: Record<string, UserAnswerDraft>;
+  report?: SessionReportResponse | null;
+}
+
+export function loadPersistedExamState(): PersistedExamState | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedExamState;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function savePersistedExamState(state: PersistedExamState): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // Ignore storage quota or iOS Private Browsing errors
+  }
+}
+
 interface ExamState {
   sessionId: string | null;
   examTitle: string;
@@ -23,7 +53,9 @@ interface ExamState {
   isSaving: boolean;
   isSubmitting: boolean;
   report: SessionReportResponse | null;
+  isReportModalOpen: boolean;
 
+  hydrateFromStorage: () => void;
   initSessionData: (data: {
     sessionId: string;
     examTitle: string;
@@ -40,10 +72,11 @@ interface ExamState {
   setSavingState: (isSaving: boolean, savedAt?: string) => void;
   setSubmittingState: (isSubmitting: boolean) => void;
   setReport: (report: SessionReportResponse | null) => void;
+  setReportModalOpen: (open: boolean) => void;
 }
 
-export const useExamStore = create<ExamState>((set) => ({
-  sessionId: null,
+export const useExamStore = create<ExamState>((set, get) => ({
+  sessionId: "local-session-91",
   examTitle: "제91회 한국어능력시험 (TOPIK I·II) 통합 실전 모의고사",
   remainingSeconds: 7200,
   isTimerRunning: true,
@@ -56,6 +89,27 @@ export const useExamStore = create<ExamState>((set) => ({
   isSaving: false,
   isSubmitting: false,
   report: null,
+  isReportModalOpen: false,
+
+  hydrateFromStorage: () => {
+    const saved = loadPersistedExamState();
+    if (!saved) return;
+    set((state) => ({
+      selectedLanguage: saved.selectedLanguage || state.selectedLanguage,
+      targetLevel:
+        typeof saved.targetLevel === "number"
+          ? saved.targetLevel
+          : state.targetLevel,
+      remainingSeconds:
+        typeof saved.targetLevel === "number"
+          ? saved.targetLevel <= 2
+            ? 100 * 60
+            : 180 * 60
+          : state.remainingSeconds,
+      answers: saved.answers || state.answers,
+      report: saved.report !== undefined ? saved.report : state.report,
+    }));
+  },
 
   initSessionData: ({ sessionId, examTitle, remainingSeconds, questions }) =>
     set({
@@ -75,17 +129,34 @@ export const useExamStore = create<ExamState>((set) => ({
   toggleTimer: () =>
     set((state) => ({ isTimerRunning: !state.isTimerRunning })),
 
-  setLanguage: (lang) => set({ selectedLanguage: lang }),
+  setLanguage: (lang) => {
+    set({ selectedLanguage: lang });
+    const s = get();
+    savePersistedExamState({
+      selectedLanguage: lang,
+      targetLevel: s.targetLevel,
+      answers: s.answers,
+      report: s.report,
+    });
+  },
 
-  setTargetLevel: (level) =>
+  setTargetLevel: (level) => {
     set({
       targetLevel: level,
       remainingSeconds: level <= 2 ? 100 * 60 : 180 * 60,
-    }),
+    });
+    const s = get();
+    savePersistedExamState({
+      selectedLanguage: s.selectedLanguage,
+      targetLevel: level,
+      answers: s.answers,
+      report: s.report,
+    });
+  },
 
   setCurrentQuestionIndex: (index) => set({ currentQuestionIndex: index }),
 
-  setOptionAnswer: (questionId, optionNumber) =>
+  setOptionAnswer: (questionId, optionNumber) => {
     set((state) => ({
       answers: {
         ...state.answers,
@@ -94,9 +165,17 @@ export const useExamStore = create<ExamState>((set) => ({
           submitted_option_number: optionNumber,
         },
       },
-    })),
+    }));
+    const s = get();
+    savePersistedExamState({
+      selectedLanguage: s.selectedLanguage,
+      targetLevel: s.targetLevel,
+      answers: s.answers,
+      report: s.report,
+    });
+  },
 
-  setTextAnswer: (questionId, text) =>
+  setTextAnswer: (questionId, text) => {
     set((state) => ({
       answers: {
         ...state.answers,
@@ -105,7 +184,15 @@ export const useExamStore = create<ExamState>((set) => ({
           submitted_text: text,
         },
       },
-    })),
+    }));
+    const s = get();
+    savePersistedExamState({
+      selectedLanguage: s.selectedLanguage,
+      targetLevel: s.targetLevel,
+      answers: s.answers,
+      report: s.report,
+    });
+  },
 
   setSavingState: (isSaving, savedAt) =>
     set((state) => ({
@@ -115,5 +202,19 @@ export const useExamStore = create<ExamState>((set) => ({
 
   setSubmittingState: (isSubmitting) => set({ isSubmitting }),
 
-  setReport: (report) => set({ report }),
+  setReport: (report) => {
+    set({
+      report,
+      isReportModalOpen: Boolean(report),
+    });
+    const s = get();
+    savePersistedExamState({
+      selectedLanguage: s.selectedLanguage,
+      targetLevel: s.targetLevel,
+      answers: s.answers,
+      report,
+    });
+  },
+
+  setReportModalOpen: (open) => set({ isReportModalOpen: open }),
 }));

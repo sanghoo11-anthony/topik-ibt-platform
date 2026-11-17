@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
     ? {
         output: "export",
         basePath: "/topik-ibt-platform",
+        trailingSlash: true,
         images: { unoptimized: true },
       }
     : {}),

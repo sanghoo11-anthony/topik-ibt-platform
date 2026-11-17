@@ -21,6 +21,7 @@ import {
   Home,
   LayoutGrid,
   Library,
+  LogIn,
   Pause,
   PenTool,
   Play,
@@ -29,12 +30,27 @@ import {
   Sparkles,
   Square,
   Trash2,
+  User,
   Video,
   Volume2,
 } from "lucide-react";
 import ClickablePassage from "@/components/ClickablePassage";
-import WritingGridEditor from "@/components/WritingGridEditor";
-import GradingReportModal from "@/components/GradingReportModal";
+import WritingGridEditor, {
+  TopikQ53VisualChart,
+} from "@/components/WritingGridEditor";
+import GradingReportModal, {
+  ReportContent,
+} from "@/components/GradingReportModal";
+import AuthModal from "@/components/AuthModal";
+import {
+  authService,
+  AuthSession,
+  AuthUser,
+} from "@/services/authService";
+import {
+  userDataService,
+  ExamRecordDTO,
+} from "@/services/userDataService";
 import { useExamStore } from "@/store/useExamStore";
 import {
   SUPPORTED_LANGUAGES,
@@ -43,16 +59,21 @@ import {
   getUITranslation,
 } from "@/types/exam";
 import {
+  BUILT_IN_MINI_LECTURES,
   CURATED_VOCAB_ITEMS,
   GRAMMAR_PATTERNS_DATA,
   IDIOMS_DATA,
   STUDY_RESOURCES_DATA,
   getLocalizedQuestionExplanation,
 } from "@/data/studyData";
+import { analyzeAndLookupWord } from "@/utils/dictionary";
+import {
+  API_BASE_URL,
+  buildClientSideExamReport,
+  fetchWithTimeout,
+  shouldUseBackendApi,
+} from "@/utils/grading";
 import { speakMultilingualText, stopSpeech } from "@/utils/speech";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 type ActiveMenu = "home" | "exam" | "writing" | "vocab" | "study" | "report";
 type ExamSectionFilter = "ALL" | "LEVEL" | "LISTENING" | "READING" | "WRITING";
@@ -96,6 +117,7 @@ export default function TopikPlatformApp() {
     answers,
     setOptionAnswer,
     setTextAnswer,
+    hydrateFromStorage,
     initSessionData,
     tickTimer,
     lastSavedAt,
@@ -105,16 +127,26 @@ export default function TopikPlatformApp() {
     setSubmittingState,
     report,
     setReport,
+    setReportModalOpen,
   } = useExamStore();
 
   const [activeMenu, setActiveMenu] = useState<ActiveMenu>("home");
   const [sectionFilter, setSectionFilter] = useState<ExamSectionFilter>("ALL");
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
 
-  // Listening TTS state
+  // Cloud Auth & User Data Sync (Supabase Adapter)
+  const [authSession, setAuthSession] = useState<AuthSession | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [examRecords, setExamRecords] = useState<ExamRecordDTO[]>([]);
+  const currentUser: AuthUser | null = authSession?.user || null;
+
+  // Listening & Lecture TTS state
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [speechRate, setSpeechRate] = useState<number>(1.0);
   const [showListeningScript, setShowListeningScript] = useState(true);
+  const [selectedMiniLectureId, setSelectedMiniLectureId] =
+    useState<string>("lec-writing-53");
+  const [isPlayingLecture, setIsPlayingLecture] = useState(false);
 
   // Vocabulary & Grammar Lab state
   const [searchQuery, setSearchQuery] = useState("면역력이");
@@ -190,49 +222,113 @@ export default function TopikPlatformApp() {
     ? answers[currentQuestion.question_id] || {}
     : {};
 
-  // Stop speech synthesis when changing questions or leaving exam
+  // Stop speech when changing questions or leaving exam
   useEffect(() => {
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      setIsSpeaking(false);
-    }
+    stopSpeech();
+    setIsSpeaking(false);
+    setIsPlayingLecture(false);
   }, [currentQuestionIndex, activeMenu]);
 
   const handlePlayListeningAudio = (scriptText: string) => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
-
     const cleanedScript = scriptText
       .replace(/^\[.*?\]\n?/gm, "")
-      .replace(/여자(\(강연자\))?:/g, "")
-      .replace(/남자:/g, "")
+      .replace(/여자(\(강연자\))?:/g, "여자. ")
+      .replace(/남자:/g, "남자. ")
       .trim();
 
-    const utterance = new SpeechSynthesisUtterance(cleanedScript);
-    utterance.lang = "ko-KR";
-    utterance.rate = speechRate;
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
+    if (!cleanedScript) return;
     setIsSpeaking(true);
-    window.speechSynthesis.speak(utterance);
+    speakMultilingualText(cleanedScript, "ko", speechRate, () => {
+      setIsSpeaking(false);
+    });
   };
 
   const handleStopListeningAudio = () => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
+    stopSpeech();
     setIsSpeaking(false);
+    setIsPlayingLecture(false);
   };
 
-  // 1. Initialize exam session on mount
+  const handlePlayMiniLecture = (scriptKo: string) => {
+    setIsPlayingLecture(true);
+    speakMultilingualText(scriptKo, "ko", 0.96, () => {
+      setIsPlayingLecture(false);
+    });
+  };
+
+  const loadCloudUserData = useCallback(
+    async (session: AuthSession) => {
+      const [profile, cloudVocab, cloudRecords] = await Promise.all([
+        userDataService.getProfile(session),
+        userDataService.getSavedVocabularies(session),
+        userDataService.getExamRecords(session),
+      ]);
+
+      if (profile) {
+        if (profile.native_language) setLanguage(profile.native_language);
+        if (profile.target_level) setTargetLevel(profile.target_level);
+      }
+
+      if (cloudVocab.length > 0) {
+        setSavedWords(
+          cloudVocab.map((v) => ({
+            lemma: v.lemma,
+            pronunciation: v.pronunciation,
+            part_of_speech: v.part_of_speech,
+            word_grade: v.word_grade,
+            korean_definition: v.korean_definition,
+            translated_word: v.translated_word,
+            lang: selectedLanguage,
+          }))
+        );
+      }
+
+      if (cloudRecords.length > 0) {
+        setExamRecords(cloudRecords);
+      }
+    },
+    [selectedLanguage, setLanguage, setTargetLevel]
+  );
+
+  // Restore saved auth session on mount
+  useEffect(() => {
+    authService.getSession().then((session) => {
+      if (session) {
+        setAuthSession(session);
+        loadCloudUserData(session);
+      }
+    });
+  }, [loadCloudUserData]);
+
+  // Sync profile preferences when logged in
+  useEffect(() => {
+    if (!authSession) return;
+    userDataService.upsertProfile(authSession, {
+      native_language: selectedLanguage,
+      target_level: targetLevel,
+    });
+  }, [authSession, selectedLanguage, targetLevel]);
+
+  // 0. Hydrate persisted preferences, answers, and last report safely
+  useEffect(() => {
+    hydrateFromStorage();
+  }, [hydrateFromStorage]);
+
+  // 1. Initialize exam session on mount (local-first; syncs backend only on localhost or configured API URL)
   useEffect(() => {
     let mounted = true;
     async function startSession() {
+      if (!shouldUseBackendApi()) return;
       try {
-        const res = await fetch(`${API_BASE_URL}/sessions`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ exam_type: "TOPIK_II" }),
-        });
+        const res = await fetchWithTimeout(
+          `${API_BASE_URL}/sessions`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ exam_type: "TOPIK_II" }),
+          },
+          1500
+        );
         if (!res.ok) return;
         const data = await res.json();
         if (mounted && data.session_id) {
@@ -244,7 +340,7 @@ export default function TopikPlatformApp() {
           });
         }
       } catch {
-        // Fallback store already has all 22 COMPREHENSIVE_QUESTIONS
+        // Fallback store already has all COMPREHENSIVE_QUESTIONS
       }
     }
     startSession();
@@ -267,6 +363,17 @@ export default function TopikPlatformApp() {
     const answerEntries = Object.entries(answers);
     if (answerEntries.length === 0) return;
 
+    const nowStr = new Date().toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+
+    if (!shouldUseBackendApi()) {
+      setSavingState(false, nowStr);
+      return;
+    }
+
     setSavingState(true);
     try {
       const payload = {
@@ -278,23 +385,18 @@ export default function TopikPlatformApp() {
           submitted_text: draft.submitted_text ?? null,
         })),
       };
-      const res = await fetch(`${API_BASE_URL}/answers`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        const nowStr = new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        });
-        setSavingState(false, nowStr);
-      } else {
-        setSavingState(false);
-      }
+      const res = await fetchWithTimeout(
+        `${API_BASE_URL}/answers`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+        1500
+      );
+      setSavingState(false, res.ok ? nowStr : nowStr);
     } catch {
-      setSavingState(false);
+      setSavingState(false, nowStr);
     }
   }, [sessionId, answers, remainingSeconds, setSavingState]);
 
@@ -305,7 +407,7 @@ export default function TopikPlatformApp() {
     return () => clearInterval(interval);
   }, [triggerAutoSave]);
 
-  // 4. Submit exam & open AI Grading Report
+  // 4. Submit exam & open AI Grading Report (with full client-side offline grading engine)
   const handleSubmitExam = async () => {
     setSubmittingState(true);
     const reportLang = selectedLanguage;
@@ -316,61 +418,90 @@ export default function TopikPlatformApp() {
         submitted_text: draft.submitted_text ?? null,
       }));
 
-      const res = await fetch(`${API_BASE_URL}/submit`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: sessionId || "fallback-local-session",
-          lang: reportLang,
-          answers: answerEntries,
-        }),
-      });
-
-      if (res.ok) {
-        const reportData: SessionReportResponse = await res.json();
-        setReport(reportData);
-        setActiveMenu("report");
+      let reportData: SessionReportResponse | null = null;
+      if (shouldUseBackendApi()) {
+        try {
+          const res = await fetchWithTimeout(
+            `${API_BASE_URL}/submit`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                session_id: sessionId || "fallback-local-session",
+                lang: reportLang,
+                answers: answerEntries,
+              }),
+            },
+            4000
+          );
+          if (res.ok) {
+            reportData = await res.json();
+          }
+        } catch {
+          // Fallback to client-side grader below
+        }
       }
-    } catch {
-      // Offline fallback report
+
+      if (!reportData) {
+        reportData = buildClientSideExamReport(
+          questions,
+          answers,
+          targetLevel,
+          reportLang
+        );
+      }
+
+      setReport(reportData);
+      setActiveMenu("report");
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      if (authSession) {
+        try {
+          await userDataService.saveExamRecord(authSession, {
+            target_level: targetLevel,
+            total_score: reportData.total_score,
+            listening_score: reportData.listening_score,
+            reading_score: reportData.reading_score,
+            writing_score: reportData.writing_score,
+            answers_json: answers,
+          });
+          const updatedRecords = await userDataService.getExamRecords(authSession);
+          setExamRecords(updatedRecords);
+        } catch {
+          // Keep local report even if cloud sync fails
+        }
+      }
     } finally {
       setSubmittingState(false);
     }
   };
 
-  // 5. Vocabulary Lab Search
+  // 5. Vocabulary Lab Search (morphological analyzer fallback works on all mobile/browser hosts)
   const handleVocabSearch = useCallback(
     async (queryWord: string) => {
       const q = queryWord.trim();
       if (!q) return;
       setVocabLoading(true);
       try {
-        const res = await fetch(
-          `${API_BASE_URL}/api/v1/vocabularies/tooltip?surface=${encodeURIComponent(
-            q
-          )}&lang=${encodeURIComponent(selectedLanguage)}`
-        );
-        if (res.ok) {
-          const data: VocabTooltipResponse = await res.json();
-          setVocabResult(data);
+        if (shouldUseBackendApi()) {
+          const res = await fetchWithTimeout(
+            `${API_BASE_URL}/api/v1/vocabularies/tooltip?surface=${encodeURIComponent(
+              q
+            )}&lang=${encodeURIComponent(selectedLanguage)}`,
+            {},
+            1500
+          );
+          if (res.ok) {
+            const data: VocabTooltipResponse = await res.json();
+            setVocabResult(data);
+            return;
+          }
         }
+        setVocabResult(analyzeAndLookupWord(q, selectedLanguage));
       } catch {
-        setVocabResult({
-          clicked_surface: q,
-          lemma: q,
-          target_code: "00000",
-          pronunciation: q,
-          part_of_speech: "어휘",
-          word_grade: "중급",
-          senses: [
-            {
-              sense_order: 1,
-              korean_definition: `'${q}'에 대한 한국어기초사전 뜻풀이입니다.`,
-              translated_word: `${q} (${selectedLanguage.toUpperCase()})`,
-              translated_definition: `Multilingual definition for '${q}' in ${selectedLanguage.toUpperCase()}.`,
-            },
-          ],
-        });
+        setVocabResult(analyzeAndLookupWord(q, selectedLanguage));
       } finally {
         setVocabLoading(false);
       }
@@ -388,19 +519,28 @@ export default function TopikPlatformApp() {
     const firstSense = item.senses[0];
     if (!firstSense) return;
     if (savedWords.some((w) => w.lemma === item.lemma)) return;
-    setSavedWords((prev) => [
-      {
-        lemma: item.lemma,
-        pronunciation: item.pronunciation,
-        part_of_speech: item.part_of_speech,
-        word_grade: item.word_grade,
-        korean_definition: firstSense.korean_definition,
-        translated_word: firstSense.translated_word,
-        translated_definition: firstSense.translated_definition,
-        lang: selectedLanguage,
-      },
-      ...prev,
-    ]);
+    const newItem: SavedWordItem = {
+      lemma: item.lemma,
+      pronunciation: item.pronunciation,
+      part_of_speech: item.part_of_speech,
+      word_grade: item.word_grade,
+      korean_definition: firstSense.korean_definition,
+      translated_word: firstSense.translated_word,
+      translated_definition: firstSense.translated_definition,
+      lang: selectedLanguage,
+    };
+    setSavedWords((prev) => [newItem, ...prev]);
+
+    if (authSession) {
+      userDataService.saveVocabulary(authSession, {
+        lemma: newItem.lemma,
+        pronunciation: newItem.pronunciation,
+        part_of_speech: newItem.part_of_speech,
+        word_grade: newItem.word_grade,
+        korean_definition: newItem.korean_definition,
+        translated_word: newItem.translated_word,
+      });
+    }
   };
 
   const filteredCuratedVocab = useMemo(() => {
@@ -431,6 +571,13 @@ export default function TopikPlatformApp() {
       });
   }, [questions, sectionFilter, targetLevel]);
 
+  // All Q53 indices so user can switch between diverse Q53 graph questions easily
+  const q53QuestionIndices = useMemo(() => {
+    return questions
+      .map((q, idx) => ({ q, idx }))
+      .filter(({ q }) => q.section_name === "WRITING" && q.question_number === 53);
+  }, [questions]);
+
   const isAnswered = (qid: string) => {
     const ans = answers[qid];
     if (!ans) return false;
@@ -457,6 +604,9 @@ export default function TopikPlatformApp() {
     setSectionFilter(filter);
     setCurrentQuestionIndex(qIndex);
     setActiveMenu(menu);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   const startExamForTargetLevel = (lvl: number) => {
@@ -469,6 +619,9 @@ export default function TopikPlatformApp() {
     setSectionFilter("LEVEL");
     setCurrentQuestionIndex(firstMatchingIdx >= 0 ? firstMatchingIdx : 0);
     setActiveMenu("exam");
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   const firstWritingIndex = useMemo(() => {
@@ -476,312 +629,233 @@ export default function TopikPlatformApp() {
     return idx >= 0 ? idx : 0;
   }, [questions]);
 
+  const firstQ53Index = useMemo(() => {
+    const idx = questions.findIndex(
+      (q) => q.section_name === "WRITING" && q.question_number === 53
+    );
+    return idx >= 0 ? idx : firstWritingIndex;
+  }, [questions, firstWritingIndex]);
+
   const selectedLevelCutoff =
     [...TOPIK_I_LEVELS, ...TOPIK_II_LEVELS].find((l) => l.level === targetLevel)
       ?.cutoff ?? 150;
 
+  const currentMiniLecture =
+    BUILT_IN_MINI_LECTURES.find((l) => l.id === selectedMiniLectureId) ||
+    BUILT_IN_MINI_LECTURES[0];
+
+  const isWorkspaceMode = activeMenu === "exam" || activeMenu === "writing";
+
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
       {/* ================= GLOBAL TOP NAVIGATION BAR ================= */}
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-4 px-6 py-3.5">
-          {/* Left: Brand Logo */}
-          <button
-            type="button"
-            onClick={() => setActiveMenu("home")}
-            className="flex items-center gap-3 text-left transition hover:opacity-90"
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-sm">
-              <GraduationCap className="h-6 w-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg font-extrabold tracking-tight text-slate-900">
-                  Global TOPIK IBT
-                </span>
-                <span className="rounded-md bg-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-700">
-                  {t.brandBadge}
-                </span>
-              </div>
-              <p className="text-xs text-slate-500">{t.brandSubtitle}</p>
-            </div>
-          </button>
-
-          {/* Center: Main Feature Navigation Tabs */}
-          <nav className="flex flex-wrap items-center gap-1 rounded-2xl border border-slate-200 bg-slate-100/80 p-1">
+      {!isWorkspaceMode && (
+        <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
+          <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-2.5 px-3 py-2.5 sm:gap-3 sm:px-6 sm:py-3">
+            {/* Left: Brand Logo */}
             <button
               type="button"
               onClick={() => setActiveMenu("home")}
-              className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition sm:text-sm ${
-                activeMenu === "home"
-                  ? "bg-white text-blue-600 shadow-sm"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
+              className="flex items-center gap-2.5 text-left transition hover:opacity-90 sm:gap-3"
             >
-              <Home className="h-4 w-4" />
-              <span>{t.navHome}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => startMockExamAtQuestion(0, "exam", "ALL")}
-              className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition sm:text-sm ${
-                activeMenu === "exam"
-                  ? "bg-white text-blue-600 shadow-sm"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              <FileText className="h-4 w-4" />
-              <span>
-                {t.navExam} ({questions.length})
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                startMockExamAtQuestion(firstWritingIndex, "writing", "WRITING")
-              }
-              className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition sm:text-sm ${
-                activeMenu === "writing"
-                  ? "bg-white text-blue-600 shadow-sm"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              <PenTool className="h-4 w-4" />
-              <span>{t.navWriting}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveMenu("vocab")}
-              className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition sm:text-sm ${
-                activeMenu === "vocab"
-                  ? "bg-white text-blue-600 shadow-sm"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              <BookMarked className="h-4 w-4" />
-              <span>{t.navVocab}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveMenu("study")}
-              className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition sm:text-sm ${
-                activeMenu === "study"
-                  ? "bg-white text-blue-600 shadow-sm"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              <Video className="h-4 w-4" />
-              <span>
-                {selectedLanguage === "ko" ? "학습 자료·유튜브" : "Study Hub & YouTube"}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveMenu("report")}
-              className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition sm:text-sm ${
-                activeMenu === "report"
-                  ? "bg-white text-blue-600 shadow-sm"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              <BarChartIcon />
-              <span>{t.navReport}</span>
-            </button>
-          </nav>
-
-          {/* Right: Language Selector (Default: Korean) & Exam Timer */}
-          <div className="flex flex-wrap items-center gap-3">
-            {(activeMenu === "exam" || activeMenu === "writing") && (
-              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5">
-                <Clock className="h-4 w-4 text-blue-600" />
-                <span className="font-mono text-sm font-extrabold text-slate-900">
-                  {formattedTime}
-                </span>
-                <button
-                  type="button"
-                  onClick={toggleTimer}
-                  className="rounded-lg p-1 text-slate-500 hover:bg-slate-200"
-                >
-                  {isTimerRunning ? (
-                    <Pause className="h-3.5 w-3.5" />
-                  ) : (
-                    <Play className="h-3.5 w-3.5" />
-                  )}
-                </button>
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-sm sm:h-10 sm:w-10">
+                <GraduationCap className="h-5 w-5 sm:h-6 sm:w-6" />
               </div>
-            )}
-
-            <div className="flex items-center gap-2 rounded-xl border-2 border-blue-200 bg-blue-50/60 px-3 py-1.5 text-xs font-semibold text-slate-700">
-              <Globe className="h-4 w-4 text-blue-600" />
-              <select
-                aria-label="Select Language"
-                value={selectedLanguage}
-                onChange={(e) => setLanguage(e.target.value)}
-                className="cursor-pointer bg-transparent font-bold text-slate-900 focus:outline-none"
-              >
-                {SUPPORTED_LANGUAGES.map((lang) => (
-                  <option key={lang.code} value={lang.code}>
-                    {lang.flag} {lang.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* ================= VIEW 1: HOME LANDING & FEATURE HUB ================= */}
-      {activeMenu === "home" && (
-        <main className="mx-auto w-full max-w-[1440px] flex-1 space-y-8 px-6 py-8">
-          {/* 1. TOP SECTION: Interactive TOPIK Exam & Target Level (1급~6급) Selector */}
-          <section className="rounded-3xl border-2 border-blue-200 bg-white p-6 shadow-md sm:p-8">
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
-              <div>
-                <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-100 px-3 py-1 text-xs font-extrabold text-blue-800">
-                  <Award className="h-3.5 w-3.5" />
-                  {t.levelSelectorTag}
-                </span>
-                <h2 className="mt-2 text-2xl font-extrabold text-slate-900 sm:text-3xl">
-                  {t.levelSelectorTitle}
-                </h2>
-                <p className="mt-1 text-xs text-slate-600 sm:text-sm">
-                  {t.levelSelectorDesc}
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <span className="truncate text-base font-extrabold tracking-tight text-slate-900 sm:text-lg">
+                    Global TOPIK IBT
+                  </span>
+                  <span className="shrink-0 rounded-md bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 sm:px-2 sm:text-[11px]">
+                    {t.brandBadge}
+                  </span>
+                </div>
+                <p className="hidden text-xs text-slate-500 sm:block">
+                  {t.brandSubtitle}
                 </p>
               </div>
+            </button>
+
+            {/* Center: Main Feature Navigation Tabs (horizontal strip on mobile, centered on xl) */}
+            <nav className="no-scrollbar order-3 flex w-full items-center gap-1 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-100/80 p-1 xl:order-2 xl:w-auto">
+              <button
+                type="button"
+                onClick={() => setActiveMenu("home")}
+                className={`flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold transition sm:px-3 sm:py-2 sm:text-sm ${
+                  activeMenu === "home"
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <Home className="h-4 w-4" />
+                <span>{t.navHome}</span>
+              </button>
 
               <button
                 type="button"
-                onClick={() => startExamForTargetLevel(targetLevel)}
-                className="flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-xs font-extrabold text-white shadow-md shadow-blue-600/20 transition hover:bg-blue-700 sm:text-sm"
+                onClick={() => startMockExamAtQuestion(0, "exam", "ALL")}
+                className="flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-600 transition hover:text-slate-900 sm:px-3 sm:py-2 sm:text-sm"
               >
-                <Play className="h-4 w-4 fill-current" />
+                <FileText className="h-4 w-4" />
                 <span>
-                  [{targetLevel <= 2 ? "TOPIK I" : "TOPIK II"} ·{" "}
-                  {formatLevelLabel(targetLevel)}] {t.startSelectedLevelBtn}
+                  {t.navExam} ({questions.length})
                 </span>
               </button>
-            </div>
 
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-              {/* TOPIK I (Levels 1-2) Selectable Group */}
-              <div
-                className={`rounded-2xl border-2 p-5 transition lg:col-span-5 ${
-                  targetLevel <= 2
-                    ? "border-blue-500 bg-blue-50/40"
-                    : "border-slate-200 bg-slate-50/70"
+              <button
+                type="button"
+                onClick={() =>
+                  startMockExamAtQuestion(firstQ53Index, "writing", "WRITING")
+                }
+                className="flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-600 transition hover:text-slate-900 sm:px-3 sm:py-2 sm:text-sm"
+              >
+                <PenTool className="h-4 w-4" />
+                <span>{t.navWriting}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveMenu("vocab")}
+                className={`flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold transition sm:px-3 sm:py-2 sm:text-sm ${
+                  activeMenu === "vocab"
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-base font-extrabold text-slate-900">
-                    {t.topik1Title}
-                  </span>
-                  <span className="rounded-lg bg-white px-2.5 py-1 text-xs font-bold text-blue-600 shadow-sm">
-                    {t.topik1Meta}
-                  </span>
-                </div>
+                <BookMarked className="h-4 w-4" />
+                <span>{t.navVocab}</span>
+              </button>
 
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  {TOPIK_I_LEVELS.map(({ level, cutoff }) => {
-                    const isSelected = targetLevel === level;
-                    return (
-                      <button
-                        key={level}
-                        type="button"
-                        onClick={() => setTargetLevel(level)}
-                        className={`flex flex-col items-start justify-between rounded-2xl border-2 p-4 text-left transition ${
-                          isSelected
-                            ? "border-blue-600 bg-blue-600 text-white shadow-md"
-                            : "border-slate-200 bg-white text-slate-800 hover:border-blue-400"
-                        }`}
-                      >
-                        <div className="flex w-full items-center justify-between">
-                          <span className="text-lg font-extrabold">
-                            {formatLevelLabel(level)}
-                          </span>
-                          {isSelected && (
-                            <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold text-white">
-                              ✓ {t.selectedBadge}
-                            </span>
-                          )}
-                        </div>
-                        <div
-                          className={`mt-2 font-mono text-sm font-bold ${
-                            isSelected ? "text-blue-100" : "text-blue-600"
-                          }`}
-                        >
-                          {cutoff}
-                          {t.pointsOrAbove}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* TOPIK II (Levels 3-6) Selectable Group */}
-              <div
-                className={`rounded-2xl border-2 p-5 transition lg:col-span-7 ${
-                  targetLevel >= 3
-                    ? "border-indigo-500 bg-indigo-50/40"
-                    : "border-slate-200 bg-slate-50/70"
+              <button
+                type="button"
+                onClick={() => setActiveMenu("study")}
+                className={`flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold transition sm:px-3 sm:py-2 sm:text-sm ${
+                  activeMenu === "study"
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-base font-extrabold text-indigo-950">
-                    {t.topik2Title}
-                  </span>
-                  <span className="rounded-lg bg-white px-2.5 py-1 text-xs font-bold text-indigo-700 shadow-sm">
-                    {t.topik2Meta}
-                  </span>
-                </div>
+                <Video className="h-4 w-4" />
+                <span>
+                  {selectedLanguage === "ko"
+                    ? "무광고 미니특강·학습자료"
+                    : "Ad-Free Mini-Lectures"}
+                </span>
+              </button>
 
-                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  {TOPIK_II_LEVELS.map(({ level, cutoff }) => {
-                    const isSelected = targetLevel === level;
-                    return (
-                      <button
-                        key={level}
-                        type="button"
-                        onClick={() => setTargetLevel(level)}
-                        className={`flex flex-col items-start justify-between rounded-2xl border-2 p-4 text-left transition ${
-                          isSelected
-                            ? "border-indigo-600 bg-indigo-600 text-white shadow-md"
-                            : "border-slate-200 bg-white text-slate-800 hover:border-indigo-400"
-                        }`}
-                      >
-                        <div className="flex w-full items-center justify-between">
-                          <span className="text-lg font-extrabold">
-                            {formatLevelLabel(level)}
-                          </span>
-                          {isSelected && (
-                            <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                              ✓
-                            </span>
-                          )}
-                        </div>
-                        <div
-                          className={`mt-2 font-mono text-sm font-bold ${
-                            isSelected ? "text-indigo-100" : "text-indigo-600"
-                          }`}
-                        >
-                          {cutoff}
-                          {t.pointsOrAbove}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+              <button
+                type="button"
+                onClick={() => setActiveMenu("report")}
+                className={`flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold transition sm:px-3 sm:py-2 sm:text-sm ${
+                  activeMenu === "report"
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <BarChartIcon />
+                <span>{t.navReport}</span>
+              </button>
+            </nav>
+
+            {/* Right: Language Dropdown Stack + Exam & Target Level Dropdown Stack Side-by-Side */}
+            <div className="order-2 flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:justify-end sm:gap-2.5 xl:order-3">
+              {/* 1. Language Selector Dropdown (16px font on mobile prevents iOS Safari zoom) */}
+              <div className="flex min-w-0 items-center gap-1.5 rounded-xl border-2 border-blue-200 bg-blue-50/60 px-2.5 py-1 font-semibold text-slate-700 sm:gap-2 sm:px-3 sm:py-1.5">
+                <Globe className="h-4 w-4 shrink-0 text-blue-600" />
+                <select
+                  aria-label="Select Language"
+                  value={selectedLanguage}
+                  onChange={(e) => setLanguage(e.target.value)}
+                  className="max-w-[115px] cursor-pointer truncate bg-transparent text-base font-bold text-slate-900 focus:outline-none sm:max-w-none sm:text-xs"
+                >
+                  {SUPPORTED_LANGUAGES.map((lang) => (
+                    <option key={lang.code} value={lang.code}>
+                      {lang.flag} {lang.label}
+                    </option>
+                  ))}
+                </select>
               </div>
-            </div>
-          </section>
 
-          {/* 2. Hero Section */}
-          <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 p-8 text-white shadow-xl sm:p-10">
+              {/* 2. Exam & Target Level (1급~6급) Selector Dropdown right next to Language! */}
+              <div className="flex min-w-0 flex-1 items-center justify-between gap-1.5 rounded-xl border-2 border-indigo-200 bg-indigo-50/70 px-2.5 py-1 font-semibold text-slate-700 sm:flex-initial sm:gap-2 sm:px-3 sm:py-1.5">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <Award className="h-4 w-4 shrink-0 text-indigo-600" />
+                  <select
+                    aria-label="응시할 시험 및 목표 급수 선택"
+                    value={targetLevel}
+                    onChange={(e) => setTargetLevel(Number(e.target.value))}
+                    className="w-full min-w-0 cursor-pointer truncate bg-transparent text-base font-bold text-indigo-950 focus:outline-none sm:w-auto sm:text-xs"
+                  >
+                    <optgroup label="TOPIK I (초급 · 1~2급 · 200점 만점)">
+                      <option value={1}>
+                        TOPIK I · {formatLevelLabel(1)} 목표 (80{t.pointsOrAbove})
+                      </option>
+                      <option value={2}>
+                        TOPIK I · {formatLevelLabel(2)} 목표 (140{t.pointsOrAbove})
+                      </option>
+                    </optgroup>
+                    <optgroup label="TOPIK II (중·고급 · 3~6급 · 300점 만점)">
+                      <option value={3}>
+                        TOPIK II · {formatLevelLabel(3)} 목표 (120{t.pointsOrAbove})
+                      </option>
+                      <option value={4}>
+                        TOPIK II · {formatLevelLabel(4)} 목표 (150{t.pointsOrAbove})
+                      </option>
+                      <option value={5}>
+                        TOPIK II · {formatLevelLabel(5)} 목표 (190{t.pointsOrAbove})
+                      </option>
+                      <option value={6}>
+                        TOPIK II · {formatLevelLabel(6)} 목표 (230{t.pointsOrAbove})
+                      </option>
+                    </optgroup>
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => startExamForTargetLevel(targetLevel)}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-[11px] font-extrabold text-white shadow-sm transition hover:bg-indigo-700"
+                >
+                  <Play className="h-3 w-3 fill-current" />
+                  <span>시험 시작</span>
+                </button>
+              </div>
+
+              {/* 3. Account Login / Profile Button */}
+              <button
+                type="button"
+                onClick={() => setIsAuthModalOpen(true)}
+                className={`flex shrink-0 items-center gap-1.5 rounded-xl border-2 px-2.5 py-1.5 text-xs font-extrabold transition sm:px-3 ${
+                  currentUser
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                    : "border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-slate-50"
+                }`}
+              >
+                {currentUser ? (
+                  <>
+                    <User className="h-3.5 w-3.5 text-emerald-600" />
+                    <span className="max-w-[90px] truncate sm:max-w-[110px]">
+                      {currentUser.email.split("@")[0]}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <LogIn className="h-3.5 w-3.5 text-blue-600" />
+                    <span>
+                      {selectedLanguage === "ko" ? "로그인" : "Sign In"}
+                    </span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </header>
+      )}
+
+      {/* ================= VIEW 1: HOME LANDING & FEATURE HUB ================= */}
+      {activeMenu === "home" && (
+        <main className="mx-auto w-full max-w-[1440px] flex-1 space-y-6 px-3 py-4 sm:space-y-8 sm:px-6 sm:py-6">
+          {/* 1. Hero Section (Directly at top of Home now that Exam/Level selector is in the top bar next to Language!) */}
+          <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 p-5 text-white shadow-xl sm:p-10">
             <div className="relative z-10 grid grid-cols-1 items-center gap-8 lg:grid-cols-12">
               <div className="space-y-4 lg:col-span-7">
                 <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-blue-200 backdrop-blur">
@@ -804,18 +878,21 @@ export default function TopikPlatformApp() {
                 <div className="flex flex-wrap items-center gap-3 pt-2">
                   <button
                     type="button"
-                    onClick={() => startMockExamAtQuestion(0, "exam", "ALL")}
+                    onClick={() => startExamForTargetLevel(targetLevel)}
                     className="flex items-center gap-2 rounded-2xl bg-blue-500 px-6 py-3 text-sm font-extrabold text-white shadow-lg shadow-blue-500/25 transition hover:bg-blue-400"
                   >
                     <Play className="h-4 w-4 fill-current" />
-                    <span>{t.heroStartExamBtn} (19문항)</span>
+                    <span>
+                      [{targetLevel <= 2 ? "TOPIK I" : "TOPIK II"} ·{" "}
+                      {formatLevelLabel(targetLevel)}] 맞춤 모의고사 시작
+                    </span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() =>
                       startMockExamAtQuestion(
-                        firstWritingIndex,
+                        firstQ53Index,
                         "writing",
                         "WRITING"
                       )
@@ -823,7 +900,7 @@ export default function TopikPlatformApp() {
                     className="flex items-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-6 py-3 text-sm font-bold text-white backdrop-blur transition hover:bg-white/20"
                   >
                     <PenTool className="h-4 w-4" />
-                    <span>{t.heroStartWritingBtn} (51~54번)</span>
+                    <span>쓰기 53번 그래프·원고지 연습 (51~54번)</span>
                   </button>
 
                   <button
@@ -834,8 +911,8 @@ export default function TopikPlatformApp() {
                     <Video className="h-4 w-4" />
                     <span>
                       {selectedLanguage === "ko"
-                        ? "유튜브 강의 · 문법 · 쓰기 공식"
-                        : "YouTube Lectures & Grammar"}
+                        ? "무광고 핵심 완강 미니특강"
+                        : "Ad-Free Complete Mini-Lectures"}
                     </span>
                   </button>
                 </div>
@@ -874,16 +951,16 @@ export default function TopikPlatformApp() {
                   </div>
                   <div className="rounded-xl bg-white/5 p-3.5">
                     <span className="text-slate-300">
-                      {t.summaryDictSupport}
+                      쓰기 53번 시각 그래프
                     </span>
                     <div className="mt-1 text-base font-bold text-white">
-                      {t.summaryDictValue}
+                      4종 도표·통계 완비
                     </div>
                   </div>
                   <div className="rounded-xl bg-white/5 p-3.5">
-                    <span className="text-slate-300">{t.summaryAiGrading}</span>
+                    <span className="text-slate-300">무광고 핵심 특강</span>
                     <div className="mt-1 text-base font-bold text-amber-300">
-                      51·52·53·54번 완비
+                      6강 전 영역 완강 탑재
                     </div>
                   </div>
                 </div>
@@ -891,7 +968,7 @@ export default function TopikPlatformApp() {
             </div>
           </section>
 
-          {/* 3. Main Feature Selection Cards */}
+          {/* 2. Main Feature Selection Cards */}
           <section className="space-y-4">
             <div className="flex flex-wrap items-end justify-between gap-2">
               <div>
@@ -916,7 +993,7 @@ export default function TopikPlatformApp() {
                       <BookOpen className="h-6 w-6" />
                     </div>
                     <span className="rounded-full bg-blue-50 px-3 py-1 text-[11px] font-bold text-blue-700">
-                      듣기 TTS + 읽기 지문
+                      듣기 음성(TTS) + 읽기 지문
                     </span>
                   </div>
 
@@ -932,7 +1009,7 @@ export default function TopikPlatformApp() {
                   <ul className="space-y-1.5 text-xs text-slate-500">
                     <li className="flex items-center gap-1.5">
                       <CheckCircle2 className="h-3.5 w-3.5 text-blue-600" />
-                      1~6급 기출 유형별 듣기(음성 재생)·읽기 완비
+                      1~6급 기출 유형별 듣기(음성 완벽 재생)·읽기 완비
                     </li>
                     <li className="flex items-center gap-1.5">
                       <CheckCircle2 className="h-3.5 w-3.5 text-blue-600" />
@@ -965,7 +1042,7 @@ export default function TopikPlatformApp() {
                 </div>
               </div>
 
-              {/* Feature Card 2: Writing Wongoji + Gemini AI (51~54번) */}
+              {/* Feature Card 2: Writing Wongoji + Q53 Visual Graphs */}
               <div className="group flex flex-col justify-between rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-indigo-400 hover:shadow-xl">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
@@ -973,7 +1050,7 @@ export default function TopikPlatformApp() {
                       <PenTool className="h-6 w-6" />
                     </div>
                     <span className="rounded-full bg-indigo-50 px-3 py-1 text-[11px] font-bold text-indigo-700">
-                      51 · 52 · 53 · 54번
+                      53번 시각 그래프 4종 + 원고지
                     </span>
                   </div>
 
@@ -982,14 +1059,14 @@ export default function TopikPlatformApp() {
                       {t.card2Title}
                     </h3>
                     <p className="mt-1.5 text-xs leading-relaxed text-slate-600">
-                      {t.card2Desc}
+                      인주시 자전거 이용자 변화 등 4종의 실전 도표·그래프를 좌측에 띄우고 우측 원고지에 스크롤 없이 바로 작성합니다.
                     </p>
                   </div>
 
                   <ul className="space-y-1.5 text-xs text-slate-500">
                     <li className="flex items-center gap-1.5">
                       <CheckCircle2 className="h-3.5 w-3.5 text-indigo-600" />
-                      51·52번 빈칸 완성 + 53·54번 기출 복원 6문항
+                      53번 그래프 분석 4문항 + 51·52·54번 한 화면 분할
                     </li>
                     <li className="flex items-center gap-1.5">
                       <CheckCircle2 className="h-3.5 w-3.5 text-indigo-600" />
@@ -1003,6 +1080,19 @@ export default function TopikPlatformApp() {
                     type="button"
                     onClick={() =>
                       startMockExamAtQuestion(
+                        firstQ53Index,
+                        "writing",
+                        "WRITING"
+                      )
+                    }
+                    className="flex items-center justify-center gap-1 rounded-xl bg-indigo-600 py-2.5 text-xs font-bold text-white transition hover:bg-indigo-700"
+                  >
+                    <span>53번 그래프 연습</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      startMockExamAtQuestion(
                         firstWritingIndex,
                         "writing",
                         "WRITING"
@@ -1010,20 +1100,7 @@ export default function TopikPlatformApp() {
                     }
                     className="flex items-center justify-center gap-1 rounded-xl bg-indigo-50 py-2.5 text-xs font-bold text-indigo-700 transition hover:bg-indigo-600 hover:text-white"
                   >
-                    <span>51~53번 연습</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      startMockExamAtQuestion(
-                        questions.length - 1,
-                        "writing",
-                        "WRITING"
-                      )
-                    }
-                    className="flex items-center justify-center gap-1 rounded-xl bg-indigo-600 py-2.5 text-xs font-bold text-white transition hover:bg-indigo-700"
-                  >
-                    <span>54번 논술</span>
+                    <span>51~54번 전체</span>
                   </button>
                 </div>
               </div>
@@ -1036,7 +1113,7 @@ export default function TopikPlatformApp() {
                       <BookMarked className="h-6 w-6" />
                     </div>
                     <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-700">
-                      어휘 · 문법 · 관용어
+                      어휘 · 문법 · 관용어 음성
                     </span>
                   </div>
 
@@ -1052,7 +1129,7 @@ export default function TopikPlatformApp() {
                   <ul className="space-y-1.5 text-xs text-slate-500">
                     <li className="flex items-center gap-1.5">
                       <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                      초급·중급·고급 필수 어휘 및 사자성어·관용어
+                      초급·중급·고급 필수 어휘 및 사자성어 음성 재생
                     </li>
                     <li className="flex items-center gap-1.5">
                       <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
@@ -1071,7 +1148,7 @@ export default function TopikPlatformApp() {
                 </button>
               </div>
 
-              {/* Feature Card 4: YouTube Lectures & Official Archive */}
+              {/* Feature Card 4: Ad-Free Complete Mini-Lectures */}
               <div className="group flex flex-col justify-between rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-amber-400 hover:shadow-xl">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
@@ -1079,27 +1156,25 @@ export default function TopikPlatformApp() {
                       <Video className="h-6 w-6" />
                     </div>
                     <span className="rounded-full bg-amber-50 px-3 py-1 text-[11px] font-bold text-amber-800">
-                      YouTube · 기출 아카이브
+                      광고 없는 자체 완강 특강
                     </span>
                   </div>
 
                   <div>
                     <h3 className="text-lg font-extrabold text-slate-900">
                       {selectedLanguage === "ko"
-                        ? "유튜브 특강 & 쓰기 만점 공식"
-                        : "YouTube Lectures & Study Hub"}
+                        ? "무광고 핵심 완강 미니특강"
+                        : "Ad-Free Complete Mini-Lectures"}
                     </h3>
                     <p className="mt-1.5 text-xs leading-relaxed text-slate-600">
-                      {selectedLanguage === "ko"
-                        ? "HANIJEMI, WABOM TOPIK 등 대표 유튜브 해설 특강, 쓰기 53·54번 만점 문장 공식, 1~6급 필수 문법을 총정리했습니다."
-                        : "Curated TOPIK YouTube lectures, Q53/Q54 writing templates, core grammar patterns, and official NIIED resources."}
+                      불편한 유튜브 광고 없이 사이트 안에서 바로 듣고 보는 6개의 완전한 핵심 미니 강의(쓰기 53·54번, 듣기, 읽기, 문법)를 제공합니다.
                     </p>
                   </div>
 
                   <ul className="space-y-1.5 text-xs text-slate-500">
                     <li className="flex items-center gap-1.5">
                       <CheckCircle2 className="h-3.5 w-3.5 text-amber-600" />
-                      유튜브 영역별 추천 강의 & 공식 기출 자료실
+                      유튜브 상업 광고 ZERO · 선생님 음성 완강 탑재
                     </li>
                     <li className="flex items-center gap-1.5">
                       <CheckCircle2 className="h-3.5 w-3.5 text-amber-600" />
@@ -1115,8 +1190,8 @@ export default function TopikPlatformApp() {
                 >
                   <span>
                     {selectedLanguage === "ko"
-                      ? "학습 자료실 열기"
-                      : "Open Study Hub"}
+                      ? "무광고 완강 특강 열기"
+                      : "Open Ad-Free Lectures"}
                   </span>
                   <ArrowRight className="h-4 w-4" />
                 </button>
@@ -1126,108 +1201,187 @@ export default function TopikPlatformApp() {
         </main>
       )}
 
-      {/* ================= VIEW 2 & 3: IBT MOCK EXAM & WRITING WORKSPACE ================= */}
+      {/* ================= VIEW 2 & 3: IBT MOCK EXAM & WRITING WORKSPACE (ULTRA-COMPACT SINGLE BAR + NO-SCROLL SPLIT VIEW) ================= */}
       {(activeMenu === "exam" || activeMenu === "writing") && (
         <div className="flex flex-1 flex-col">
-          {/* Sub-toolbar with Section Filter & Question Buttons */}
-          <div className="border-b border-slate-200 bg-white">
-            <div className="mx-auto flex max-w-[1440px] flex-col gap-2.5 px-6 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2">
+          {/* Ultra-Slim Top Bar (Sticky only on desktop lg+ so mobile screen space isn't blocked) */}
+          <div className="border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur lg:sticky lg:top-0 lg:z-40">
+            <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4">
+              {/* Left: Back Home + Compact Section Filter Pills */}
+              <div className="no-scrollbar flex w-full items-center gap-1.5 overflow-x-auto pb-0.5 sm:w-auto sm:pb-0">
+                <button
+                  type="button"
+                  onClick={() => setActiveMenu("home")}
+                  className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  <span>홈으로</span>
+                </button>
+
+                <div className="h-4 w-px shrink-0 bg-slate-200" />
+
+                {(
+                  [
+                    { id: "ALL", label: `전체(${questions.length})` },
+                    { id: "LISTENING", label: "듣기" },
+                    { id: "READING", label: "읽기" },
+                    { id: "WRITING", label: "쓰기 51~54번" },
+                  ] as const
+                ).map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => {
+                      setSectionFilter(f.id);
+                      const firstMatch = questions.findIndex((q) => {
+                        if (f.id === "ALL") return true;
+                        if (f.id === "LISTENING")
+                          return q.section_name === "LISTENING";
+                        if (f.id === "READING")
+                          return q.section_name === "READING";
+                        if (f.id === "WRITING")
+                          return q.section_name === "WRITING";
+                        return true;
+                      });
+                      if (firstMatch >= 0) {
+                        setCurrentQuestionIndex(firstMatch);
+                      }
+                    }}
+                    className={`shrink-0 rounded-lg px-2.5 py-1 text-xs font-bold transition ${
+                      sectionFilter === f.id
+                        ? "bg-slate-900 text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Center: Compact Inline Question Selector Strip */}
+              <div className="no-scrollbar flex w-full flex-1 items-center gap-1 overflow-x-auto px-0.5 py-0.5 lg:w-auto">
+                {filteredQuestionIndices.map(({ q, idx }) => {
+                  const active = idx === currentQuestionIndex;
+                  const done = isAnswered(q.question_id);
+                  const q53Order =
+                    q.section_name === "WRITING" && q.question_number === 53
+                      ? q53QuestionIndices.findIndex((item) => item.idx === idx) + 1
+                      : null;
+                  return (
+                    <button
+                      key={q.question_id}
+                      type="button"
+                      onClick={() => setCurrentQuestionIndex(idx)}
+                      className={`flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold transition ${
+                        active
+                          ? "bg-blue-600 text-white shadow-sm"
+                          : done
+                            ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200 hover:bg-emerald-100"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      <span>
+                        {q53Order
+                          ? `53번(그래프${q53Order})`
+                          : `Q${q.question_number}`}
+                      </span>
+                      {done && (
+                        <CheckCircle2
+                          className={`h-3 w-3 ${
+                            active ? "text-blue-100" : "text-emerald-600"
+                          }`}
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Right: Timer + Language Stack + Target Level Stack + Palette + Submit */}
+              <div className="flex w-full flex-wrap items-center justify-between gap-1.5 sm:w-auto sm:justify-end">
+                <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1">
+                  <Clock className="h-3.5 w-3.5 text-blue-600" />
+                  <span className="font-mono text-xs font-extrabold text-slate-900">
+                    {formattedTime}
+                  </span>
                   <button
                     type="button"
-                    onClick={() => setActiveMenu("home")}
-                    className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100"
+                    onClick={toggleTimer}
+                    className="rounded p-0.5 text-slate-500 hover:bg-slate-200"
                   >
-                    <ArrowLeft className="h-3.5 w-3.5" />
-                    <span>{t.backHome}</span>
+                    {isTimerRunning ? (
+                      <Pause className="h-3 w-3" />
+                    ) : (
+                      <Play className="h-3 w-3" />
+                    )}
                   </button>
-
-                  <div className="h-4 w-px bg-slate-200" />
-
-                  {/* Section Filter Pills */}
-                  {(
-                    [
-                      { id: "ALL", label: `전체 (${questions.length})` },
-                      {
-                        id: "LEVEL",
-                        label: `${formatLevelLabel(targetLevel)} 맞춤`,
-                      },
-                      { id: "LISTENING", label: "듣기 (Listening)" },
-                      { id: "READING", label: "읽기 (Reading)" },
-                      { id: "WRITING", label: "쓰기 51~54번 (Writing)" },
-                    ] as const
-                  ).map((f) => (
-                    <button
-                      key={f.id}
-                      type="button"
-                      onClick={() => {
-                        setSectionFilter(f.id);
-                        const firstMatch = questions.findIndex((q) => {
-                          if (f.id === "ALL") return true;
-                          if (f.id === "LISTENING")
-                            return q.section_name === "LISTENING";
-                          if (f.id === "READING")
-                            return q.section_name === "READING";
-                          if (f.id === "WRITING")
-                            return q.section_name === "WRITING";
-                          const d = q.difficulty_level || 3;
-                          if (targetLevel <= 2) return d <= 2;
-                          if (targetLevel <= 4) return d >= 3 && d <= 4;
-                          return d >= 4;
-                        });
-                        if (firstMatch >= 0) {
-                          setCurrentQuestionIndex(firstMatch);
-                        }
-                      }}
-                      className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${
-                        sectionFilter === f.id
-                          ? "bg-slate-900 text-white"
-                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                      }`}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
                 </div>
 
-                <div className="flex items-center gap-2.5">
-                  <span className="hidden items-center gap-1 text-xs text-slate-500 md:inline-flex">
-                    <CheckCircle2
-                      className={`h-3.5 w-3.5 ${
-                        isSaving
-                          ? "animate-spin text-amber-500"
-                          : "text-emerald-600"
-                      }`}
-                    />
-                    {isSaving
-                      ? "Auto-saving..."
-                      : lastSavedAt
-                        ? `Saved (${lastSavedAt})`
-                        : "10s Auto-save ON"}
-                  </span>
+                {/* Language Selector Dropdown */}
+                <div className="flex min-w-0 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50/60 px-2 py-1 font-bold text-slate-800">
+                  <Globe className="h-3 w-3 shrink-0 text-blue-600" />
+                  <select
+                    aria-label="Select Language"
+                    value={selectedLanguage}
+                    onChange={(e) => setLanguage(e.target.value)}
+                    className="max-w-[95px] cursor-pointer truncate bg-transparent text-base font-bold text-slate-900 focus:outline-none sm:max-w-none sm:text-[11px]"
+                  >
+                    {SUPPORTED_LANGUAGES.map((lang) => (
+                      <option key={lang.code} value={lang.code}>
+                        {lang.flag} {lang.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-                  {/* Question Palette Popover */}
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setIsPaletteOpen((p) => !p)}
-                      className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
-                    >
-                      <LayoutGrid className="h-3.5 w-3.5 text-blue-600" />
-                      <span>
-                        {t.paletteBtn} ({answeredCount}/{questions.length})
-                      </span>
-                    </button>
+                {/* Exam & Target Level Selector Dropdown right next to Language! */}
+                <div className="flex min-w-0 items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50/70 px-2 py-1 font-bold text-indigo-950">
+                  <Award className="h-3 w-3 shrink-0 text-indigo-600" />
+                  <select
+                    aria-label="응시 시험 및 목표 급수 선택"
+                    value={targetLevel}
+                    onChange={(e) => setTargetLevel(Number(e.target.value))}
+                    className="max-w-[110px] cursor-pointer truncate bg-transparent text-base font-bold text-indigo-950 focus:outline-none sm:max-w-none sm:text-[11px]"
+                  >
+                    <optgroup label="TOPIK I (초급 · 1~2급)">
+                      <option value={1}>TOPIK I · {formatLevelLabel(1)}</option>
+                      <option value={2}>TOPIK I · {formatLevelLabel(2)}</option>
+                    </optgroup>
+                    <optgroup label="TOPIK II (중·고급 · 3~6급)">
+                      <option value={3}>TOPIK II · {formatLevelLabel(3)}</option>
+                      <option value={4}>TOPIK II · {formatLevelLabel(4)}</option>
+                      <option value={5}>TOPIK II · {formatLevelLabel(5)}</option>
+                      <option value={6}>TOPIK II · {formatLevelLabel(6)}</option>
+                    </optgroup>
+                  </select>
+                </div>
 
-                    {isPaletteOpen && (
-                      <div className="absolute right-0 z-50 mt-2 w-80 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+                {/* Question Palette Popover */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsPaletteOpen((p) => !p)}
+                    className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                  >
+                    <LayoutGrid className="h-3.5 w-3.5 text-blue-600" />
+                    <span className="hidden sm:inline">
+                      문항({answeredCount}/{questions.length})
+                    </span>
+                  </button>
+
+                  {isPaletteOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40 bg-black/25 sm:bg-transparent"
+                        onClick={() => setIsPaletteOpen(false)}
+                      />
+                      <div className="fixed inset-x-3 top-16 z-50 mx-auto max-w-sm rounded-2xl border border-slate-200 bg-white p-4 shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80">
                         <div className="mb-2.5 flex items-center justify-between text-xs font-bold text-slate-700">
                           <span>{t.paletteBtn}</span>
                           <button
                             type="button"
                             onClick={() => setIsPaletteOpen(false)}
-                            className="text-slate-400 hover:text-slate-600"
+                            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                           >
                             ✕
                           </button>
@@ -1262,110 +1416,144 @@ export default function TopikPlatformApp() {
                           ))}
                         </div>
                       </div>
-                    )}
-                  </div>
-
-                  <button
-                    type="button"
-                    disabled={isSubmitting}
-                    onClick={handleSubmitExam}
-                    className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-60"
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                    <span>{isSubmitting ? t.submittingBtn : t.submitBtn}</span>
-                  </button>
+                    </>
+                  )}
                 </div>
-              </div>
 
-              {/* Scrollable Question Selector Strip */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-                {filteredQuestionIndices.map(({ q, idx }) => {
-                  const active = idx === currentQuestionIndex;
-                  const done = isAnswered(q.question_id);
-                  return (
-                    <button
-                      key={q.question_id}
-                      type="button"
-                      onClick={() => setCurrentQuestionIndex(idx)}
-                      className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition ${
-                        active
-                          ? "bg-blue-600 text-white shadow-sm"
-                          : done
-                            ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200 hover:bg-emerald-100"
-                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                      }`}
-                    >
-                      {q.section_name === "LISTENING" ? (
-                        <Headphones className="h-3.5 w-3.5" />
-                      ) : q.section_name === "READING" ? (
-                        <FileText className="h-3.5 w-3.5" />
-                      ) : (
-                        <PenTool className="h-3.5 w-3.5" />
-                      )}
-                      <span>
-                        [{q.difficulty_level}급] Q{q.question_number}
-                      </span>
-                      {done && (
-                        <CheckCircle2
-                          className={`h-3.5 w-3.5 ${
-                            active ? "text-blue-100" : "text-emerald-600"
-                          }`}
-                        />
-                      )}
-                    </button>
-                  );
-                })}
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={handleSubmitExam}
+                  className="flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-60"
+                >
+                  <Send className="h-3 w-3" />
+                  <span>{isSubmitting ? t.submittingBtn : t.submitBtn}</span>
+                </button>
               </div>
             </div>
           </div>
 
-          {/* 5:5 Split View Workspace */}
-          <main className="mx-auto grid w-full max-w-[1440px] flex-1 grid-cols-1 gap-6 p-6 lg:grid-cols-12">
-            {/* LEFT PANE (50%): Listening Audio Player + Passage with Clickable Vocabulary Tokens */}
-            <section className="flex flex-col justify-between rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-6">
-              <div className="space-y-5">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-lg bg-slate-900 px-3 py-1 text-xs font-extrabold text-white">
+          {/* 5:5 Split View Workspace — Locked Side-by-Side on Desktop so Problem/Graph and Wongoji are BOTH visible without scrolling up & down! */}
+          <main className="mx-auto grid w-full max-w-[1440px] flex-1 grid-cols-1 gap-4 px-3 py-3 sm:px-4 lg:grid-cols-12 lg:items-start">
+            {/* LEFT PANE (50%): Visual Chart for Q53 + Audio Player + Clickable Passage */}
+            <section className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:sticky lg:top-12 lg:col-span-6 lg:max-h-[calc(100vh-3.5rem)] lg:overflow-y-auto">
+              <div className="space-y-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="rounded-lg bg-slate-900 px-2.5 py-0.5 text-xs font-extrabold text-white">
                       Q{currentQuestion.question_number}
+
                     </span>
-                    <span className="rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">
+                    <span className="rounded-lg bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-700">
                       {currentQuestion.section_name}
                     </span>
                     {currentQuestion.difficulty_level && (
-                      <span className="rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700">
-                        난이도 {currentQuestion.difficulty_level}급
+                      <span className="rounded-lg bg-indigo-50 px-2 py-0.5 text-xs font-bold text-indigo-700">
+                        {currentQuestion.difficulty_level}급
                       </span>
                     )}
-                    <span className="rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-800">
+                    <span className="rounded-lg bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-800">
                       {currentQuestion.score_points}점
                     </span>
                   </div>
-                  <span className="text-xs font-semibold text-slate-400">
-                    Target: {formatLevelLabel(targetLevel)}
-                  </span>
+
+                  {/* Universal Audio Play Button for ALL Questions (Listening, Reading, Writing) */}
+                  <div className="flex items-center gap-1.5">
+                    {!isSpeaking ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handlePlayListeningAudio(
+                            `${currentQuestion.prompt_text}. ${
+                              currentQuestion.passage_text || ""
+                            }`
+                          )
+                        }
+                        className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1 text-xs font-extrabold text-white shadow-sm hover:bg-blue-700"
+                      >
+                        <Volume2 className="h-3.5 w-3.5" />
+                        <span>🔊 문제·지문 음성 듣기</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleStopListeningAudio}
+                        className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-2.5 py-1 text-xs font-extrabold text-white shadow-sm hover:bg-red-700"
+                      >
+                        <Square className="h-3 w-3 fill-current" />
+                        <span>정지</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
+
+                {/* Question Prompt shown right above the Graph/Passage on Left Pane */}
+                <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+                  <h2 className="text-sm font-extrabold leading-snug text-slate-900 sm:text-base">
+                    {currentQuestion.prompt_text}
+                  </h2>
+                </div>
+
+                {/* Q53 Diverse Graph Problem Switcher + Authentic SVG Visual Chart */}
+                {currentQuestion.section_name === "WRITING" &&
+                  currentQuestion.question_number === 53 && (
+                    <div className="space-y-2.5">
+                      <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-indigo-100 bg-indigo-50/60 p-2">
+                        <span className="text-[11px] font-extrabold text-indigo-900">
+                          📊 53번 그래프 문제 선택:
+                        </span>
+                        {q53QuestionIndices.map(({ q, idx }, orderIdx) => {
+                          const labels = [
+                            "1. 인주시 자전거 이용자 변화",
+                            "2. 온라인 쇼핑 시장·만족 요인",
+                            "3. 1인 가구 변화와 원인",
+                            "4. 성인 전자책 독서율 변화",
+                          ];
+                          const isCurrent = idx === currentQuestionIndex;
+                          return (
+                            <button
+                              key={q.question_id}
+                              type="button"
+                              onClick={() => setCurrentQuestionIndex(idx)}
+                              className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                                isCurrent
+                                  ? "bg-indigo-600 text-white shadow-sm"
+                                  : "bg-white text-indigo-800 ring-1 ring-indigo-200 hover:bg-indigo-100"
+                              }`}
+                            >
+                              {labels[orderIdx] || `그래프 ${orderIdx + 1}`}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <TopikQ53VisualChart
+                        promptText={currentQuestion.prompt_text}
+                        passageText={currentQuestion.passage_text ?? undefined}
+                      />
+                    </div>
+                  )}
 
                 {/* Listening TTS Audio Controller */}
                 {currentQuestion.section_name === "LISTENING" &&
                   currentQuestion.passage_text && (
-                    <div className="rounded-2xl border-2 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
-                            <Volume2 className="h-5 w-5" />
+                    <div className="rounded-2xl border-2 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 p-3.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
+                            <Volume2 className="h-4 w-4" />
                           </div>
                           <div>
                             <div className="text-xs font-extrabold text-blue-950">
-                              TOPIK 한국어 듣기 음성 플레이어 (TTS)
+                              TOPIK 한국어 듣기 음성 플레이어
                             </div>
                             <div className="text-[11px] text-blue-700">
-                              실전처럼 먼저 음성을 듣고 문제를 푼 뒤 대본으로 복습하세요
+                              클릭 즉시 한국어 남녀 대화·강연 음성이 재생됩니다
                             </div>
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           {!isSpeaking ? (
                             <button
                               type="button"
@@ -1374,7 +1562,7 @@ export default function TopikPlatformApp() {
                                   currentQuestion.passage_text || ""
                                 )
                               }
-                              className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-extrabold text-white shadow-sm hover:bg-blue-700"
+                              className="flex items-center gap-1 rounded-xl bg-blue-600 px-3.5 py-1.5 text-xs font-extrabold text-white shadow-sm hover:bg-blue-700"
                             >
                               <Play className="h-3.5 w-3.5 fill-current" />
                               <span>듣기 음원 재생</span>
@@ -1383,7 +1571,7 @@ export default function TopikPlatformApp() {
                             <button
                               type="button"
                               onClick={handleStopListeningAudio}
-                              className="flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-extrabold text-white shadow-sm hover:bg-red-700"
+                              className="flex items-center gap-1 rounded-xl bg-red-600 px-3.5 py-1.5 text-xs font-extrabold text-white shadow-sm hover:bg-red-700"
                             >
                               <Square className="h-3.5 w-3.5 fill-current" />
                               <span>재생 정지</span>
@@ -1397,7 +1585,7 @@ export default function TopikPlatformApp() {
                                 key={rate}
                                 type="button"
                                 onClick={() => setSpeechRate(rate)}
-                                className={`rounded-lg px-2 py-1 text-[11px] font-bold ${
+                                className={`rounded-lg px-2 py-0.5 text-[11px] font-bold ${
                                   speechRate === rate
                                     ? "bg-blue-600 text-white"
                                     : "text-slate-600 hover:bg-slate-100"
@@ -1411,16 +1599,16 @@ export default function TopikPlatformApp() {
                           <button
                             type="button"
                             onClick={() => setShowListeningScript((s) => !s)}
-                            className="flex items-center gap-1 rounded-xl border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-50"
+                            className="flex items-center gap-1 rounded-xl border border-blue-200 bg-white px-2.5 py-1 text-xs font-bold text-blue-700 hover:bg-blue-50"
                           >
                             {showListeningScript ? (
                               <>
-                                <EyeOff className="h-3.5 w-3.5" />
+                                <EyeOff className="h-3 w-3" />
                                 <span>대본 숨기기</span>
                               </>
                             ) : (
                               <>
-                                <Eye className="h-3.5 w-3.5" />
+                                <Eye className="h-3 w-3" />
                                 <span>대본 보기</span>
                               </>
                             )}
@@ -1440,29 +1628,19 @@ export default function TopikPlatformApp() {
                   )}
               </div>
 
-              <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50/50 p-3.5 text-xs leading-relaxed text-blue-900">
-                <div className="flex items-center gap-1.5 font-bold text-blue-800">
-                  <Sparkles className="h-4 w-4 text-blue-600" />
-                  <span>{t.tooltipHintTitle}</span>
-                </div>
-                <p className="mt-1 text-blue-700">{t.tooltipHintDesc}</p>
+              <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50/50 p-2.5 text-[11px] leading-relaxed text-blue-900">
+                <span className="font-bold text-blue-800">
+                  💡 {t.tooltipHintTitle}:
+                </span>{" "}
+                {t.tooltipHintDesc}
               </div>
             </section>
 
-            {/* RIGHT PANE (50%): Question Prompt & Multiple Choice Options OR Wongoji Editor */}
-            <section className="flex flex-col justify-between rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-6">
-              <div className="space-y-6">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-blue-600">
-                    Question {currentQuestion.question_number}
-                  </span>
-                  <h2 className="mt-1 text-base font-bold leading-relaxed text-slate-900 sm:text-lg">
-                    {currentQuestion.prompt_text}
-                  </h2>
-                </div>
-
+            {/* RIGHT PANE (50%): Multiple Choice Options OR Wongoji Editor */}
+            <section className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:sticky lg:top-12 lg:col-span-6 lg:max-h-[calc(100vh-3.5rem)] lg:overflow-y-auto">
+              <div className="space-y-4">
                 {currentQuestion.question_type === "MULTIPLE_CHOICE" ? (
-                  <div className="space-y-3">
+                  <div className="space-y-2.5">
                     {currentQuestion.options.map((opt) => {
                       const isSelected =
                         currentAnswer.submitted_option_number ===
@@ -1477,14 +1655,14 @@ export default function TopikPlatformApp() {
                               opt.option_number
                             )
                           }
-                          className={`flex w-full items-center gap-4 rounded-2xl border-2 p-4 text-left transition ${
+                          className={`flex w-full items-center gap-3.5 rounded-2xl border-2 p-3.5 text-left transition ${
                             isSelected
                               ? "border-blue-600 bg-blue-50/70 shadow-sm"
                               : "border-slate-200 bg-white hover:border-blue-300 hover:bg-slate-50"
                           }`}
                         >
                           <span
-                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-extrabold transition ${
+                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-sm font-extrabold transition ${
                               isSelected
                                 ? "bg-blue-600 text-white"
                                 : "bg-slate-100 text-slate-700"
@@ -1493,7 +1671,7 @@ export default function TopikPlatformApp() {
                             {opt.option_number}
                           </span>
                           <span
-                            className={`text-base font-semibold ${
+                            className={`text-sm font-semibold sm:text-base ${
                               isSelected ? "text-blue-950" : "text-slate-800"
                             }`}
                           >
@@ -1516,71 +1694,75 @@ export default function TopikPlatformApp() {
                 )}
 
                 {/* 다국어 해설 보기 및 음성(TTS) 듣기 패널 */}
-                <div className="mt-6 rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4 shadow-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-200/70 pb-2.5">
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-lg bg-indigo-600 px-2.5 py-0.5 text-[11px] font-extrabold text-white">
-                        {currentLangMeta.flag} {currentLangMeta.label} 해설 & 음성 지원
-                      </span>
-                      <span className="text-xs font-bold text-indigo-950">
-                        선택 언어로 문제 풀이 전략 보고 듣기
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-3 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-200/70 pb-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="rounded-md bg-indigo-600 px-2 py-0.5 text-[11px] font-extrabold text-white">
+                        {currentLangMeta.flag} {currentLangMeta.label} 해설 & 음성
                       </span>
                     </div>
-                    <div className="flex flex-wrap items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1">
                       <button
                         type="button"
                         onClick={() =>
                           speakMultilingualText(
                             `${currentQuestion.prompt_text}. ${currentQuestion.passage_text || ""}`,
                             "ko",
-                            0.92
-                          )
-                        }
-                        className="inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1 text-xs font-bold text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"
-                      >
-                        <Volume2 className="h-3.5 w-3.5 text-blue-600" />
-                        <span>🇰🇷 한국어 문제/지문 듣기</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          speakMultilingualText(
-                            getLocalizedQuestionExplanation(
-                              currentQuestion.section_name,
-                              currentQuestion.question_number,
-                              selectedLanguage
-                            ),
-                            selectedLanguage,
                             0.95
                           )
                         }
-                        className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1 text-xs font-bold text-white shadow-sm hover:bg-indigo-700"
+                        className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1 text-[11px] font-bold text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"
                       >
-                        <Volume2 className="h-3.5 w-3.5" />
-                        <span>
-                          {currentLangMeta.flag} {currentLangMeta.label} 해설 듣기
-                        </span>
+                        <Volume2 className="h-3 w-3 text-blue-600" />
+                        <span>🇰🇷 한국어 문제 듣기</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const exp = getLocalizedQuestionExplanation(
+                            currentQuestion.section_name,
+                            currentQuestion.question_number,
+                            selectedLanguage
+                          );
+                          speakMultilingualText(
+                            `${exp.answer}. ${exp.explanation}`,
+                            selectedLanguage,
+                            0.95
+                          );
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm hover:bg-indigo-700"
+                      >
+                        <Volume2 className="h-3 w-3" />
+                        <span>{currentLangMeta.flag} 해설 음성 듣기</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => stopSpeech()}
-                        className="rounded-lg bg-white px-2 py-1 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100"
+                        className="rounded-lg bg-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-300"
                       >
                         정지
                       </button>
                     </div>
                   </div>
-                  <p className="mt-2.5 text-xs leading-relaxed text-indigo-950 sm:text-sm">
-                    {getLocalizedQuestionExplanation(
+                  {(() => {
+                    const exp = getLocalizedQuestionExplanation(
                       currentQuestion.section_name,
                       currentQuestion.question_number,
                       selectedLanguage
-                    )}
-                  </p>
+                    );
+                    return (
+                      <div className="mt-2 space-y-1 text-xs leading-relaxed text-indigo-950">
+                        <div className="font-extrabold text-indigo-900">
+                          ✓ {exp.answer}
+                        </div>
+                        <p>{exp.explanation}</p>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
-              <div className="mt-8 flex items-center justify-between border-t border-slate-100 pt-4">
+              <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
                 <button
                   type="button"
                   disabled={currentQuestionIndex === 0}
@@ -1589,9 +1771,9 @@ export default function TopikPlatformApp() {
                       Math.max(0, currentQuestionIndex - 1)
                     )
                   }
-                  className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 sm:text-sm"
+                  className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
                 >
-                  <ArrowLeft className="h-4 w-4" />
+                  <ArrowLeft className="h-3.5 w-3.5" />
                   <span>{t.prevQuestion}</span>
                 </button>
 
@@ -1607,18 +1789,18 @@ export default function TopikPlatformApp() {
                         Math.min(questions.length - 1, currentQuestionIndex + 1)
                       )
                     }
-                    className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700 sm:text-sm"
+                    className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-700"
                   >
                     <span>{t.nextQuestion}</span>
-                    <ArrowRight className="h-4 w-4" />
+                    <ArrowRight className="h-3.5 w-3.5" />
                   </button>
                 ) : (
                   <button
                     type="button"
                     onClick={handleSubmitExam}
-                    className="flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 sm:text-sm"
+                    className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-indigo-700"
                   >
-                    <Sparkles className="h-4 w-4" />
+                    <Sparkles className="h-3.5 w-3.5" />
                     <span>{t.submitBtn}</span>
                   </button>
                 )}
@@ -1630,7 +1812,7 @@ export default function TopikPlatformApp() {
 
       {/* ================= VIEW 4: MULTILINGUAL VOCABULARY & GRAMMAR LAB ================= */}
       {activeMenu === "vocab" && (
-        <main className="mx-auto w-full max-w-[1440px] flex-1 space-y-8 px-6 py-8">
+        <main className="mx-auto w-full max-w-[1440px] flex-1 space-y-6 px-3 py-5 sm:space-y-8 sm:px-6 sm:py-8">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <span className="text-xs font-bold uppercase tracking-wider text-emerald-600">
@@ -1674,7 +1856,7 @@ export default function TopikPlatformApp() {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="면역력이, 양극화, 함양하다, 경신하다, 급증하다..."
-                    className="w-full rounded-xl border border-slate-300 py-2.5 pl-10 pr-4 text-sm focus:border-emerald-500 focus:outline-none"
+                    className="w-full rounded-xl border border-slate-300 py-2.5 pl-10 pr-4 text-base focus:border-emerald-500 focus:outline-none sm:text-sm"
                   />
                 </div>
                 <button
@@ -1757,6 +1939,22 @@ export default function TopikPlatformApp() {
                       )}
                       <button
                         type="button"
+                        onClick={() =>
+                          speakMultilingualText(
+                            `${vocabResult.lemma}. ${
+                              vocabResult.senses[0]?.korean_definition || ""
+                            }`,
+                            "ko",
+                            0.95
+                          )
+                        }
+                        className="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-700"
+                      >
+                        <Volume2 className="h-3.5 w-3.5" />
+                        <span>발음 듣기</span>
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleSaveWord(vocabResult)}
                         className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
                       >
@@ -1817,16 +2015,20 @@ export default function TopikPlatformApp() {
                             [{item.pronunciation}]
                           </span>
                         )}
-                        {item.part_of_speech && (
-                          <span className="rounded bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-                            {item.part_of_speech}
-                          </span>
-                        )}
-                        {item.word_grade && (
-                          <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800">
-                            {item.word_grade}
-                          </span>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            speakMultilingualText(
+                              `${item.lemma}. ${item.korean_definition}`,
+                              "ko",
+                              0.95
+                            )
+                          }
+                          className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700 hover:bg-blue-100"
+                        >
+                          <Volume2 className="h-3 w-3" />
+                          <span>듣기</span>
+                        </button>
                       </div>
                       {item.translated_word && (
                         <div className="text-xs font-bold text-blue-700">
@@ -1840,11 +2042,17 @@ export default function TopikPlatformApp() {
 
                     <button
                       type="button"
-                      onClick={() =>
+                      onClick={() => {
                         setSavedWords((prev) =>
                           prev.filter((w) => w.lemma !== item.lemma)
-                        )
-                      }
+                        );
+                        if (authSession) {
+                          userDataService.deleteVocabulary(
+                            authSession,
+                            item.lemma
+                          );
+                        }
+                      }}
                       className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -1867,7 +2075,7 @@ export default function TopikPlatformApp() {
                 </h3>
               </div>
 
-              <div className="flex items-center gap-1.5 rounded-xl bg-slate-100 p-1">
+              <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-slate-100 p-1">
                 {(["ALL", "초급", "중급", "고급"] as const).map((grade) => (
                   <button
                     key={grade}
@@ -1938,13 +2146,13 @@ export default function TopikPlatformApp() {
                             speakMultilingualText(
                               `${w.lemma}. ${w.korean_definition}. ${w.example_ko}`,
                               "ko",
-                              0.92
+                              0.95
                             )
                           }
                           className="inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
                         >
                           <Volume2 className="h-3 w-3 text-emerald-600" />
-                          <span>🇰🇷 한국어</span>
+                          <span>🇰🇷 한국어 듣기</span>
                         </button>
                         {trans && (
                           <button
@@ -1959,7 +2167,7 @@ export default function TopikPlatformApp() {
                             className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700"
                           >
                             <Volume2 className="h-3 w-3" />
-                            <span>{currentLangMeta.flag} 해설 듣기</span>
+                            <span>{currentLangMeta.flag} 번역 듣기</span>
                           </button>
                         )}
                       </div>
@@ -1968,10 +2176,13 @@ export default function TopikPlatformApp() {
                         onClick={() => {
                           setSearchQuery(w.lemma);
                           handleVocabSearch(w.lemma);
+                          if (typeof window !== "undefined") {
+                            window.scrollTo({ top: 0, behavior: "smooth" });
+                          }
                         }}
                         className="text-xs font-bold text-emerald-700 hover:underline"
                       >
-                        사전 상세 보기 & 단어장 추가 →
+                        상세 보기 →
                       </button>
                     </div>
                   </div>
@@ -1982,17 +2193,20 @@ export default function TopikPlatformApp() {
         </main>
       )}
 
-      {/* ================= VIEW 5: YOUTUBE LECTURES, GRAMMAR, IDIOMS & WRITING TEMPLATES ================= */}
+      {/* ================= VIEW 5: 100% AD-FREE COMPLETE MINI-LECTURES & STUDY HUB ================= */}
       {activeMenu === "study" && (
-        <main className="mx-auto w-full max-w-[1440px] flex-1 space-y-8 px-6 py-8">
+        <main className="mx-auto w-full max-w-[1440px] flex-1 space-y-6 px-3 py-5 sm:space-y-8 sm:px-6 sm:py-8">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <span className="text-xs font-extrabold uppercase tracking-wider text-blue-600">
-                Curated TOPIK Knowledge Base & YouTube Study Archive
+                100% Ad-Free Built-in Complete Lectures & Study Archive
               </span>
               <h2 className="text-2xl font-extrabold text-slate-900">
-                TOPIK 종합 학습 자료실 (유튜브 추천 강의 · 필수 문법 · 관용어 · 쓰기 공식)
+                무광고 자체 완강 미니 특강 & 필수 문법·관용어 총정리
               </h2>
+              <p className="mt-1 text-xs text-slate-600">
+                불편한 유튜브 광고 영상을 완전히 배제하고, 사이트 내에서 처음부터 끝까지 바로 듣고 학습하는 완강형 미니 강의실입니다.
+              </p>
             </div>
             <button
               type="button"
@@ -2004,67 +2218,158 @@ export default function TopikPlatformApp() {
             </button>
           </div>
 
-          {/* 1. YouTube & Official TOPIK Resources */}
-          <section className="space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div>
-              <span className="inline-flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-1 text-xs font-extrabold text-red-700">
-                <Video className="h-3.5 w-3.5" />
-                YouTube & Official Archives
-              </span>
-              <h3 className="mt-2 text-xl font-extrabold text-slate-900">
-                추천 유튜브 TOPIK 특강 채널 & 공식 기출문제 자료실
-              </h3>
+          {/* 1. Interactive Ad-Free Complete Mini-Lecture Player (6 Complete Courses) */}
+          <section className="rounded-3xl border-2 border-indigo-200 bg-white p-6 shadow-md">
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <span className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-100 px-3 py-1 text-xs font-extrabold text-indigo-800">
+                  <Video className="h-3.5 w-3.5" />
+                  유튜브 광고 ZERO · 사이트 내장형 완강 스튜디오
+                </span>
+                <h3 className="mt-2 text-xl font-extrabold text-slate-900">
+                  🎓 TOPIK 영역별 핵심 완강 미니 특강 (총 6강 · 선생님 음성 강의 지원)
+                </h3>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {!isPlayingLecture ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handlePlayMiniLecture(currentMiniLecture.lecture_script_ko)
+                    }
+                    className="flex items-center gap-2 rounded-2xl bg-indigo-600 px-5 py-2.5 text-xs font-extrabold text-white shadow-md hover:bg-indigo-700 sm:text-sm"
+                  >
+                    <Play className="h-4 w-4 fill-current" />
+                    <span>▶️ 이 강의 선생님 음성으로 처음부터 끝까지 듣기</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleStopListeningAudio}
+                    className="flex items-center gap-2 rounded-2xl bg-red-600 px-5 py-2.5 text-xs font-extrabold text-white shadow-md hover:bg-red-700 sm:text-sm"
+                  >
+                    <Square className="h-4 w-4 fill-current" />
+                    <span>⏹️ 음성 강의 정지</span>
+                  </button>
+                )}
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {STUDY_RESOURCES_DATA.map((res) => (
-                <a
-                  key={res.id}
-                  href={res.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group flex flex-col justify-between rounded-2xl border border-slate-200 bg-slate-50/70 p-5 transition hover:-translate-y-0.5 hover:border-blue-400 hover:bg-white hover:shadow-md"
-                >
-                  <div className="space-y-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="rounded-lg bg-blue-100 px-2.5 py-1 text-[11px] font-bold text-blue-800">
-                        {res.category}
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+              {/* Left: 6 Complete Lecture Playlist */}
+              <div className="space-y-2.5 lg:col-span-5">
+                {BUILT_IN_MINI_LECTURES.map((lec) => {
+                  const isSelected = lec.id === currentMiniLecture.id;
+                  return (
+                    <button
+                      key={lec.id}
+                      type="button"
+                      onClick={() => {
+                        stopSpeech();
+                        setIsPlayingLecture(false);
+                        setSelectedMiniLectureId(lec.id);
+                      }}
+                      className={`flex w-full flex-col items-start rounded-2xl border-2 p-4 text-left transition ${
+                        isSelected
+                          ? "border-indigo-600 bg-indigo-50/70 shadow-sm"
+                          : "border-slate-200 bg-slate-50/60 hover:border-indigo-300 hover:bg-white"
+                      }`}
+                    >
+                      <div className="flex w-full items-center justify-between gap-2">
+                        <span
+                          className={`rounded-md px-2 py-0.5 text-[11px] font-extrabold ${
+                            isSelected
+                              ? "bg-indigo-600 text-white"
+                              : "bg-slate-200 text-slate-700"
+                          }`}
+                        >
+                          {lec.category}
+                        </span>
+                        <span className="text-[11px] font-bold text-emerald-700">
+                          ✓ {lec.duration}
+                        </span>
+                      </div>
+                      <h4 className="mt-2 text-sm font-extrabold text-slate-900">
+                        {lec.title}
+                      </h4>
+                      <p className="mt-1 line-clamp-2 text-xs text-slate-600">
+                        {lec.summary}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Right: Active Lecture Slide Board & Complete Transcript */}
+              <div className="flex flex-col justify-between rounded-2xl border-2 border-slate-200 bg-slate-900 p-6 text-white lg:col-span-7">
+                <div className="space-y-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/15 pb-4">
+                    <div>
+                      <span className="rounded-md bg-emerald-500/20 px-2.5 py-1 text-xs font-extrabold text-emerald-300">
+                        {currentMiniLecture.category} · {currentMiniLecture.target_levels}
                       </span>
-                      <span className="text-[11px] font-semibold text-slate-500">
-                        {res.target_levels}
-                      </span>
+                      <h4 className="mt-2 text-lg font-extrabold text-white sm:text-xl">
+                        {currentMiniLecture.title}
+                      </h4>
                     </div>
+                    <span className="rounded-xl bg-white/10 px-3 py-1 text-xs font-bold text-blue-200">
+                      {currentMiniLecture.instructor}
+                    </span>
+                  </div>
 
-                    <h4 className="text-base font-extrabold text-slate-900 group-hover:text-blue-600">
-                      {res.title}
-                    </h4>
+                  {/* Key Lecture Slides / Bullet Points */}
+                  <div className="space-y-2.5 rounded-2xl bg-white/10 p-4">
+                    <div className="text-xs font-extrabold uppercase tracking-wider text-amber-300">
+                      📌 핵심 강의 칠판 요약 (Key Lecture Slides)
+                    </div>
+                    <ul className="space-y-2 text-xs leading-relaxed text-slate-100 sm:text-sm">
+                      {currentMiniLecture.key_points.map((pt, i) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-500 text-[11px] font-extrabold text-white">
+                            {i + 1}
+                          </span>
+                          <span>{pt}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
 
-                    <p className="text-xs leading-relaxed text-slate-600">
-                      {res.description}
+                  {/* Essential Formula Box */}
+                  <div className="rounded-2xl border border-emerald-400/30 bg-emerald-950/50 p-4">
+                    <div className="text-xs font-extrabold text-emerald-300">
+                      ✍️ 실전 만점 답안 공식 (Exam Formula)
+                    </div>
+                    <pre className="mt-2 whitespace-pre-wrap font-sans text-xs leading-relaxed text-emerald-100 sm:text-sm">
+                      {currentMiniLecture.example_formula}
+                    </pre>
+                  </div>
+
+                  {/* Full Teacher Narration Script */}
+                  <div className="rounded-2xl bg-white/5 p-4">
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <span className="text-xs font-extrabold text-blue-300">
+                        🎙️ 선생님 전체 강의 대본 (음성 재생과 함께 읽어보세요)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handlePlayMiniLecture(
+                            currentMiniLecture.lecture_script_ko
+                          )
+                        }
+                        className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-blue-500"
+                      >
+                        <Volume2 className="h-3 w-3" />
+                        <span>음성 강의 재생</span>
+                      </button>
+                    </div>
+                    <p className="text-xs leading-relaxed text-slate-300">
+                      {currentMiniLecture.lecture_script_ko}
                     </p>
                   </div>
-
-                  <div className="mt-4 space-y-3">
-                    <div className="flex flex-wrap gap-1.5">
-                      {res.tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="rounded-md bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200"
-                        >
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
-
-                    <div className="flex items-center justify-between border-t border-slate-200/70 pt-2.5 text-xs font-bold text-blue-600">
-                      <span>{res.provider}</span>
-                      <span className="inline-flex items-center gap-1">
-                        바로가기 <ExternalLink className="h-3.5 w-3.5" />
-                      </span>
-                    </div>
-                  </div>
-                </a>
-              ))}
+                </div>
+              </div>
             </div>
           </section>
 
@@ -2121,7 +2426,7 @@ export default function TopikPlatformApp() {
                           speakMultilingualText(
                             `${g.pattern}. ${g.meaning_ko}. ${g.example_ko}`,
                             "ko",
-                            0.92
+                            0.95
                           )
                         }
                         className="inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
@@ -2193,7 +2498,7 @@ export default function TopikPlatformApp() {
                         speakMultilingualText(
                           `${item.expression}. ${item.meaning_ko}. ${item.example}`,
                           "ko",
-                          0.92
+                          0.95
                         )
                       }
                       className="inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
@@ -2221,12 +2526,76 @@ export default function TopikPlatformApp() {
               ))}
             </div>
           </section>
+
+          {/* 4. Official Ad-Free Public Portals (No commercial YouTube ads) */}
+          <section className="space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div>
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-1 text-xs font-extrabold text-blue-700">
+                <Globe className="h-3.5 w-3.5" />
+                Official Ad-Free Korean Government Portals
+              </span>
+              <h3 className="mt-2 text-xl font-extrabold text-slate-900">
+                대한민국 공식 무광고 한국어·TOPIK 공공 학습 포털
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              {STUDY_RESOURCES_DATA.map((res) => (
+                <a
+                  key={res.id}
+                  href={res.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group flex flex-col justify-between rounded-2xl border border-slate-200 bg-slate-50/70 p-5 transition hover:-translate-y-0.5 hover:border-blue-400 hover:bg-white hover:shadow-md"
+                >
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="rounded-lg bg-blue-100 px-2.5 py-1 text-[11px] font-bold text-blue-800">
+                        {res.category}
+                      </span>
+                      <span className="text-[11px] font-semibold text-slate-500">
+                        {res.target_levels}
+                      </span>
+                    </div>
+
+                    <h4 className="text-base font-extrabold text-slate-900 group-hover:text-blue-600">
+                      {res.title}
+                    </h4>
+
+                    <p className="text-xs leading-relaxed text-slate-600">
+                      {res.description}
+                    </p>
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    <div className="flex flex-wrap gap-1.5">
+                      {res.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="rounded-md bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200"
+                        >
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center justify-between border-t border-slate-200/70 pt-2.5 text-xs font-bold text-blue-600">
+                      <span>{res.provider}</span>
+                      <span className="inline-flex items-center gap-1">
+                        공식 사이트 열기 <ExternalLink className="h-3.5 w-3.5" />
+                      </span>
+                    </div>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </section>
         </main>
       )}
 
       {/* ================= VIEW 6: SCORE & AI GRADING REPORT PAGE ================= */}
       {activeMenu === "report" && (
-        <main className="mx-auto w-full max-w-[1440px] flex-1 space-y-6 px-6 py-8">
+        <main className="mx-auto w-full max-w-[1440px] flex-1 space-y-6 px-3 py-5 sm:px-6 sm:py-8">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
@@ -2237,7 +2606,17 @@ export default function TopikPlatformApp() {
               </h2>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {report && (
+                <button
+                  type="button"
+                  onClick={() => setReportModalOpen(true)}
+                  className="flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100"
+                >
+                  <FileCheck2 className="h-4 w-4" />
+                  <span>성적표 팝업 크게 보기</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleSubmitExam}
@@ -2258,12 +2637,12 @@ export default function TopikPlatformApp() {
           </div>
 
           {!report ? (
-            <div className="rounded-3xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+            <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm sm:p-12">
               <FileCheck2 className="mx-auto h-12 w-12 text-indigo-500" />
               <h3 className="mt-4 text-lg font-bold text-slate-900">
                 {t.card4Desc}
               </h3>
-              <div className="mt-6 flex justify-center gap-3">
+              <div className="mt-6 flex flex-wrap justify-center gap-3">
                 <button
                   type="button"
                   onClick={() => startMockExamAtQuestion(0, "exam", "ALL")}
@@ -2281,48 +2660,46 @@ export default function TopikPlatformApp() {
               </div>
             </div>
           ) : (
-            <div className="space-y-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-                <div className="rounded-2xl bg-indigo-50 p-4">
-                  <span className="text-xs font-semibold text-indigo-700">
-                    Total Score
-                  </span>
-                  <div className="mt-1 text-2xl font-extrabold text-indigo-950">
-                    {report.total_score} / {report.max_total_score}
+            <div className="space-y-6 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-xs font-bold text-amber-950">
+                <span>
+                  🎯 목표 급수: {formatLevelLabel(targetLevel)} (합격 기준{" "}
+                  {selectedLevelCutoff}점 이상)
+                </span>
+                <span className="rounded-lg bg-white px-2.5 py-1 text-indigo-700 ring-1 ring-amber-200">
+                  듣기 {report.listening_score} · 읽기 {report.reading_score} · 쓰기{" "}
+                  {report.writing_score}
+                </span>
+              </div>
+              <ReportContent
+                report={report}
+                selectedLanguage={selectedLanguage}
+              />
+            </div>
+          )}
+          {currentUser && examRecords.length > 0 && (
+            <div className="space-y-3 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="text-base font-extrabold text-slate-900">
+                ☁️ 클라우드 저장 성적 기록 ({currentUser.email})
+              </h3>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {examRecords.map((rec, idx) => (
+                  <div
+                    key={rec.id || idx}
+                    className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs"
+                  >
+                    <div className="flex items-center justify-between font-bold text-slate-700">
+                      <span>목표 {formatLevelLabel(rec.target_level)}</span>
+                      <span className="text-indigo-700">
+                        총점 {rec.total_score}점
+                      </span>
+                    </div>
+                    <div className="mt-1.5 text-slate-500">
+                      듣기 {rec.listening_score} · 읽기 {rec.reading_score} · 쓰기{" "}
+                      {rec.writing_score}
+                    </div>
                   </div>
-                </div>
-                <div className="rounded-2xl bg-sky-50 p-4">
-                  <span className="text-xs font-semibold text-sky-700">
-                    Listening
-                  </span>
-                  <div className="mt-1 text-2xl font-bold text-sky-900">
-                    {report.listening_score}
-                  </div>
-                </div>
-                <div className="rounded-2xl bg-blue-50 p-4">
-                  <span className="text-xs font-semibold text-blue-700">
-                    Reading
-                  </span>
-                  <div className="mt-1 text-2xl font-bold text-blue-900">
-                    {report.reading_score}
-                  </div>
-                </div>
-                <div className="rounded-2xl bg-purple-50 p-4">
-                  <span className="text-xs font-semibold text-purple-700">
-                    Writing AI
-                  </span>
-                  <div className="mt-1 text-2xl font-bold text-purple-900">
-                    {report.writing_score}
-                  </div>
-                </div>
-                <div className="rounded-2xl bg-amber-50 p-4">
-                  <span className="text-xs font-semibold text-amber-800">
-                    Target Level
-                  </span>
-                  <div className="mt-1 text-2xl font-extrabold text-amber-900">
-                    {formatLevelLabel(targetLevel)} ({selectedLevelCutoff}+)
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
           )}
@@ -2331,6 +2708,22 @@ export default function TopikPlatformApp() {
 
       {/* Detailed AI Grading Report Modal */}
       <GradingReportModal />
+
+      {/* Cloud Account Sign In / Sign Up Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        currentUser={currentUser}
+        onAuthSuccess={(session) => {
+          setAuthSession(session);
+          loadCloudUserData(session);
+        }}
+        onSignOut={() => {
+          setAuthSession(null);
+          setExamRecords([]);
+        }}
+        selectedLanguage={selectedLanguage}
+      />
     </div>
   );
 }

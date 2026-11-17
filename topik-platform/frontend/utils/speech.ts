@@ -15,116 +15,147 @@ export const BCP47_VOICE_MAP: Record<string, string> = {
   ar: "ar-SA",
 };
 
-const GTTS_LANG_MAP: Record<string, string> = {
-  ko: "ko",
-  en: "en",
-  vi: "vi",
-  zh: "zh-CN",
-  ja: "ja",
-  es: "es",
-  fr: "fr",
-  ru: "ru",
-  id: "id",
-  th: "th",
-  mn: "mn",
-  ar: "ar",
-};
+// Keep module-level references to active utterances so iOS Safari / WebKit
+// does not garbage-collect utterances mid-speech.
+let activeUtterances: SpeechSynthesisUtterance[] = [];
+let cachedVoices: SpeechSynthesisVoice[] = [];
+let speechEpoch = 0;
+let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+let voicesListenerAttached = false;
 
-// Prevent garbage collection of active utterances/audio in Chrome & Safari
-let activeUtterance: SpeechSynthesisUtterance | null = null;
-let activeAudio: HTMLAudioElement | null = null;
-let activeTimer: ReturnType<typeof setTimeout> | null = null;
-let isCancelled = false;
+function loadVoices(): SpeechSynthesisVoice[] {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+    return [];
+  }
+  const synth = window.speechSynthesis;
+  const list = synth.getVoices();
+  if (list.length > 0) {
+    cachedVoices = list;
+  }
+  if (!voicesListenerAttached && "addEventListener" in synth) {
+    voicesListenerAttached = true;
+    synth.addEventListener("voiceschanged", () => {
+      const updated = synth.getVoices();
+      if (updated.length > 0) {
+        cachedVoices = updated;
+      }
+    });
+  } else if (!voicesListenerAttached && "onvoiceschanged" in synth) {
+    voicesListenerAttached = true;
+    synth.onvoiceschanged = () => {
+      const updated = synth.getVoices();
+      if (updated.length > 0) {
+        cachedVoices = updated;
+      }
+    };
+  }
+  return cachedVoices.length > 0 ? cachedVoices : list;
+}
 
 if (typeof window !== "undefined" && "speechSynthesis" in window) {
-  window.speechSynthesis.getVoices();
-  window.speechSynthesis.onvoiceschanged = () => {
-    window.speechSynthesis.getVoices();
-  };
+  loadVoices();
+}
+
+export function isSpeechSupported(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    "speechSynthesis" in window &&
+    typeof SpeechSynthesisUtterance !== "undefined"
+  );
+}
+
+function splitTextIntoChunks(text: string, maxLength: number = 160): string[] {
+  const sentences = text
+    .split(/(?<=[.?!。\n])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (sentences.length === 0) {
+    return [text];
+  }
+
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const sentence of sentences) {
+    if (sentence.length <= maxLength) {
+      if (current && current.length + 1 + sentence.length > maxLength) {
+        chunks.push(current);
+        current = sentence;
+      } else {
+        current = current ? `${current} ${sentence}` : sentence;
+      }
+    } else {
+      if (current) {
+        chunks.push(current);
+        current = "";
+      }
+      // Break overly long sentences by commas/spaces
+      const parts = sentence.split(/(?<=[,;，、])\s+/);
+      let sub = "";
+      for (const part of parts) {
+        if (sub && sub.length + 1 + part.length > maxLength) {
+          chunks.push(sub);
+          sub = part;
+        } else if (part.length > maxLength) {
+          if (sub) {
+            chunks.push(sub);
+            sub = "";
+          }
+          for (let i = 0; i < part.length; i += maxLength) {
+            chunks.push(part.slice(i, i + maxLength));
+          }
+        } else {
+          sub = sub ? `${sub} ${part}` : part;
+        }
+      }
+      if (sub) chunks.push(sub);
+    }
+  }
+
+  if (current) {
+    chunks.push(current);
+  }
+
+  return chunks;
+}
+
+function findBestVoice(
+  voices: SpeechSynthesisVoice[],
+  langCode: string,
+  targetBcp47: string
+): SpeechSynthesisVoice | undefined {
+  if (voices.length === 0) return undefined;
+  const normalizedTarget = targetBcp47.replace(/_/g, "-").toLowerCase();
+  const normalizedPrefix = langCode.toLowerCase();
+
+  return (
+    voices.find(
+      (v) => v.lang.replace(/_/g, "-").toLowerCase() === normalizedTarget
+    ) ||
+    voices.find((v) =>
+      v.lang.replace(/_/g, "-").toLowerCase().startsWith(`${normalizedPrefix}-`)
+    ) ||
+    voices.find((v) =>
+      v.lang.replace(/_/g, "-").toLowerCase().startsWith(normalizedPrefix)
+    )
+  );
 }
 
 export function stopSpeech(): void {
-  isCancelled = true;
-  if (activeTimer) {
-    clearTimeout(activeTimer);
-    activeTimer = null;
+  speechEpoch += 1;
+  if (pendingTimer) {
+    clearTimeout(pendingTimer);
+    pendingTimer = null;
   }
-  if (activeAudio) {
-    try {
-      activeAudio.pause();
-      activeAudio.src = "";
-    } catch {
-      // ignore
-    }
-    activeAudio = null;
-  }
+  activeUtterances = [];
   if (typeof window !== "undefined" && "speechSynthesis" in window) {
     try {
       window.speechSynthesis.cancel();
     } catch {
-      // ignore
+      // Ignore browser-specific cancel errors
     }
   }
-  activeUtterance = null;
-}
-
-function splitTextIntoChunks(text: string, maxLen: number = 140): string[] {
-  const sentences = text
-    .replace(/\n+/g, ". ")
-    .split(/(?<=[.?!。？！])\s+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  const chunks: string[] = [];
-  for (const s of sentences) {
-    if (s.length <= maxLen) {
-      chunks.push(s);
-    } else {
-      for (let i = 0; i < s.length; i += maxLen) {
-        chunks.push(s.slice(i, i + maxLen));
-      }
-    }
-  }
-  return chunks.length > 0 ? chunks : [text.slice(0, maxLen)];
-}
-
-function playCloudAudioFallback(
-  text: string,
-  langCode: string,
-  rate: number,
-  onEnd?: () => void
-): void {
-  const tl = GTTS_LANG_MAP[langCode] || "ko";
-  const chunks = splitTextIntoChunks(text, 140);
-  let currentIdx = 0;
-
-  const playNextChunk = () => {
-    if (isCancelled || currentIdx >= chunks.length) {
-      onEnd?.();
-      return;
-    }
-    const chunk = chunks[currentIdx++];
-    const url = `https://translate.googleapis.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${encodeURIComponent(
-      tl
-    )}&q=${encodeURIComponent(chunk)}`;
-
-    const audio = document.createElement("audio");
-    audio.setAttribute("referrerpolicy", "no-referrer");
-    audio.src = url;
-    activeAudio = audio;
-    audio.playbackRate = Math.max(0.7, Math.min(1.5, rate));
-    audio.onended = () => {
-      playNextChunk();
-    };
-    audio.onerror = () => {
-      onEnd?.();
-    };
-    audio.play().catch(() => {
-      onEnd?.();
-    });
-  };
-
-  playNextChunk();
 }
 
 export function speakMultilingualText(
@@ -133,19 +164,16 @@ export function speakMultilingualText(
   rate: number = 1.0,
   onEnd?: () => void
 ): void {
-  if (typeof window === "undefined") {
+  if (!isSpeechSupported()) {
     onEnd?.();
     return;
   }
 
-  stopSpeech();
-  isCancelled = false;
-
   const cleanedText = text
     .replace(/^\[.*?\]\s*/gm, "")
+    .replace(/[•▪▶]/g, " ")
     .replace(/여자(\(강연자\))?:/g, "여자. ")
     .replace(/남자:/g, "남자. ")
-    .replace(/[•▪▶]/g, " ")
     .trim();
 
   if (!cleanedText) {
@@ -153,84 +181,95 @@ export function speakMultilingualText(
     return;
   }
 
-  const targetBcp47 = BCP47_VOICE_MAP[langCode] || "ko-KR";
+  const synth = window.speechSynthesis;
+  const wasBusy = synth.speaking || synth.pending;
 
-  // Delay slightly after cancel() to prevent Chromium/WebKit race condition
-  activeTimer = setTimeout(() => {
-    if (isCancelled) return;
+  speechEpoch += 1;
+  const currentEpoch = speechEpoch;
+  if (pendingTimer) {
+    clearTimeout(pendingTimer);
+    pendingTimer = null;
+  }
+  activeUtterances = [];
 
-    if (!("speechSynthesis" in window)) {
-      playCloudAudioFallback(cleanedText, langCode, rate, onEnd);
-      return;
-    }
-
+  if (wasBusy) {
     try {
-      window.speechSynthesis.resume();
+      synth.cancel();
     } catch {
-      // ignore
+      // Ignore
     }
+  }
+  if (synth.paused) {
+    try {
+      synth.resume();
+    } catch {
+      // Ignore
+    }
+  }
 
-    const voices = window.speechSynthesis.getVoices();
-    const utterance = new SpeechSynthesisUtterance(cleanedText);
-    activeUtterance = utterance;
-    utterance.lang = targetBcp47;
-    utterance.rate = Math.max(0.7, Math.min(1.5, rate));
-    utterance.pitch = 1.0;
-    utterance.volume = 1.0;
+  const startSpeaking = () => {
+    if (currentEpoch !== speechEpoch) return;
 
-    if (voices.length > 0) {
-      const exactMatch = voices.find(
-        (v) => v.lang.replace("_", "-").toLowerCase() === targetBcp47.toLowerCase()
-      );
-      const prefixMatch = voices.find((v) =>
-        v.lang.toLowerCase().startsWith(langCode.toLowerCase())
-      );
-      const chosenVoice = exactMatch || prefixMatch;
-      if (chosenVoice) {
-        utterance.voice = chosenVoice;
+    const targetBcp47 = BCP47_VOICE_MAP[langCode] || "ko-KR";
+    const voices = loadVoices();
+    const matchedVoice = findBestVoice(voices, langCode, targetBcp47);
+    const chunks = splitTextIntoChunks(cleanedText, 160);
+
+    const speakChunkAt = (index: number) => {
+      if (currentEpoch !== speechEpoch) return;
+      if (index >= chunks.length) {
+        activeUtterances = [];
+        onEnd?.();
+        return;
       }
-    }
 
-    let started = false;
-    let finished = false;
+      const utterance = new SpeechSynthesisUtterance(chunks[index]);
+      utterance.lang = matchedVoice
+        ? matchedVoice.lang.replace(/_/g, "-")
+        : targetBcp47;
+      utterance.rate = Math.min(2.0, Math.max(0.5, rate));
+      if (matchedVoice) {
+        utterance.voice = matchedVoice;
+      }
 
-    const fallbackWatchdog = setTimeout(() => {
-      if (!started && !finished && !isCancelled) {
-        finished = true;
-        try {
-          window.speechSynthesis.cancel();
-        } catch {
-          // ignore
+      utterance.onend = () => {
+        if (currentEpoch !== speechEpoch) return;
+        if (index + 1 < chunks.length) {
+          speakChunkAt(index + 1);
+        } else {
+          activeUtterances = [];
+          onEnd?.();
         }
-        playCloudAudioFallback(cleanedText, langCode, rate, onEnd);
-      }
-    }, 650);
+      };
 
-    utterance.onstart = () => {
-      started = true;
-      clearTimeout(fallbackWatchdog);
-    };
+      utterance.onerror = () => {
+        if (currentEpoch !== speechEpoch) return;
+        activeUtterances = [];
+        onEnd?.();
+      };
 
-    utterance.onend = () => {
-      if (finished) return;
-      finished = true;
-      clearTimeout(fallbackWatchdog);
-      activeUtterance = null;
-      onEnd?.();
-    };
+      activeUtterances.push(utterance);
 
-    utterance.onerror = () => {
-      if (finished) return;
-      finished = true;
-      clearTimeout(fallbackWatchdog);
-      activeUtterance = null;
-      if (!isCancelled) {
-        playCloudAudioFallback(cleanedText, langCode, rate, onEnd);
-      } else {
+      try {
+        synth.speak(utterance);
+      } catch {
+        activeUtterances = [];
         onEnd?.();
       }
     };
 
-    window.speechSynthesis.speak(utterance);
-  }, 80);
+    speakChunkAt(0);
+  };
+
+  // Only delay slightly when cancelling an active utterance so Android/iOS
+  // engines don't drop the new utterance; otherwise invoke synchronously
+  // to preserve iOS Safari user-gesture audio unlock.
+  if (wasBusy) {
+    pendingTimer = setTimeout(() => {
+      pendingTimer = null;
+      startSpeaking();
+    }, 50);
+  } else {
+    startSpeaking();
+  }
 }

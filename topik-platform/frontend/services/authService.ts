@@ -61,11 +61,15 @@ function parseSupabaseSession(data: Record<string, unknown>): AuthSession | null
 class SupabaseAuthAdapter implements IAuthService {
   private saveSession(session: AuthSession | null) {
     if (typeof window === "undefined") return;
-    if (!session) {
-      window.localStorage.removeItem(STORAGE_KEY);
-      return;
+    try {
+      if (!session) {
+        window.localStorage.removeItem(STORAGE_KEY);
+        return;
+      }
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+    } catch {
+      // Ignore storage quota or iOS Safari Private Browsing errors
     }
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
   }
 
   private loadSession(): AuthSession | null {

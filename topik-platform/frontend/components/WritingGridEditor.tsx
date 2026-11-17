@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   AlignLeft,
   CheckCircle2,
@@ -733,6 +733,13 @@ export default function WritingGridEditor({
     "split"
   );
 
+  // Use cleaner editor-only view by default on narrow mobile screens so typing isn't cramped
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 640) {
+      setViewMode("editor");
+    }
+  }, []);
+
   const targetMin =
     questionType === "SHORT_ANSWER"
       ? 15
@@ -949,7 +956,7 @@ export default function WritingGridEditor({
                 ? `${questionNumber}번 빈칸 ㉠, ㉡에 들어갈 알맞은 문장을 작성하십시오.`
                 : `좌측 그래프·문제를 보며 여기에 답안을 입력하면 아래 20칸 원고지에 실시간으로 채워집니다. (권장: ${targetMin}~${targetMax}자)`
             }
-            className="w-full rounded-xl border-2 border-blue-200 bg-white p-3 text-sm leading-6 text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none"
+            className="w-full rounded-xl border-2 border-blue-200 bg-white p-3 text-base leading-6 text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none sm:text-sm"
           />
         </div>
       ) : (
@@ -965,69 +972,71 @@ export default function WritingGridEditor({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder="타이핑하면 아래 20칸 원고지 격자에 한 글자씩 실시간으로 채워집니다..."
-            className="w-full rounded-lg border border-blue-200 bg-white p-2 text-xs text-slate-900 focus:border-blue-500 focus:outline-none"
+            className="w-full rounded-lg border border-blue-200 bg-white p-2 text-base text-slate-900 focus:border-blue-500 focus:outline-none sm:text-xs"
           />
         </div>
       )}
 
       {/* 20-Column Korean Wongoji Grid */}
       {(viewMode === "wongoji" || viewMode === "split") && (
-        <div className="rounded-xl border-2 border-rose-200 bg-[#fffdf9] p-3 shadow-inner">
-          <div className="mb-2 flex items-center justify-between border-b border-rose-200/70 pb-1.5 text-[11px] font-bold text-rose-800">
+        <div className="rounded-xl border-2 border-rose-200 bg-[#fffdf9] p-2.5 shadow-inner sm:p-3">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-1 border-b border-rose-200/70 pb-1.5 text-[11px] font-bold text-rose-800">
             <span>
               ✍️ TOPIK II 20칸 원고지 답안지 (20자 × {wongojiRows.length}줄 ={" "}
               {wongojiRows.length * 20}칸)
             </span>
             <span className="font-mono text-[10px] text-rose-600">
-              우측 숫자: 누적 글자 수
+              좌우 스크롤 가능 · 우측 숫자: 누적 글자 수
             </span>
           </div>
 
-          <div className="max-h-[290px] space-y-1 overflow-y-auto pr-1">
-            {wongojiRows.map((rowCells, rowIdx) => {
-              const cumulativeChars = (rowIdx + 1) * 20;
-              const isMilestone = cumulativeChars % 100 === 0;
-              const isTargetRow =
-                cumulativeChars === targetMin || cumulativeChars === targetMax;
+          <div className="overflow-x-auto pb-1">
+            <div className="max-h-[290px] min-w-[540px] space-y-1 overflow-y-auto pr-1">
+              {wongojiRows.map((rowCells, rowIdx) => {
+                const cumulativeChars = (rowIdx + 1) * 20;
+                const isMilestone = cumulativeChars % 100 === 0;
+                const isTargetRow =
+                  cumulativeChars === targetMin || cumulativeChars === targetMax;
 
-              return (
-                <div key={rowIdx} className="flex items-center gap-1">
-                  <div className="grid flex-1 grid-cols-20 border border-rose-300 bg-white">
-                    {rowCells.map((ch, colIdx) => {
-                      const isFifthCol =
-                        (colIdx + 1) % 5 === 0 && colIdx !== 19;
-                      const isSpace = ch === " ";
-                      return (
-                        <div
-                          key={colIdx}
-                          className={`flex aspect-square items-center justify-center border-r border-rose-200 text-[11px] font-semibold text-slate-900 sm:text-xs ${
-                            isFifthCol ? "border-r-rose-400" : ""
-                          } ${isSpace ? "bg-amber-50/40" : ""}`}
-                        >
-                          {isSpace ? (
-                            <span className="text-[9px] text-slate-300">␣</span>
-                          ) : (
-                            ch
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                return (
+                  <div key={rowIdx} className="flex items-center gap-1">
+                    <div className="grid flex-1 grid-cols-20 border border-rose-300 bg-white">
+                      {rowCells.map((ch, colIdx) => {
+                        const isFifthCol =
+                          (colIdx + 1) % 5 === 0 && colIdx !== 19;
+                        const isSpace = ch === " ";
+                        return (
+                          <div
+                            key={colIdx}
+                            className={`flex aspect-square items-center justify-center border-r border-rose-200 text-[11px] font-semibold text-slate-900 sm:text-xs ${
+                              isFifthCol ? "border-r-rose-400" : ""
+                            } ${isSpace ? "bg-amber-50/40" : ""}`}
+                          >
+                            {isSpace ? (
+                              <span className="text-[9px] text-slate-300">␣</span>
+                            ) : (
+                              ch
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
 
-                  <div
-                    className={`w-9 text-right font-mono text-[10px] font-bold ${
-                      isTargetRow
-                        ? "rounded bg-emerald-100 px-1 py-0.5 text-emerald-800"
-                        : isMilestone
-                          ? "text-rose-700"
-                          : "text-slate-400"
-                    }`}
-                  >
-                    {cumulativeChars}
+                    <div
+                      className={`w-9 text-right font-mono text-[10px] font-bold ${
+                        isTargetRow
+                          ? "rounded bg-emerald-100 px-1 py-0.5 text-emerald-800"
+                          : isMilestone
+                            ? "text-rose-700"
+                            : "text-slate-400"
+                      }`}
+                    >
+                      {cumulativeChars}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
       )}

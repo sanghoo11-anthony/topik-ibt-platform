@@ -38,7 +38,9 @@ import ClickablePassage from "@/components/ClickablePassage";
 import WritingGridEditor, {
   TopikQ53VisualChart,
 } from "@/components/WritingGridEditor";
-import GradingReportModal from "@/components/GradingReportModal";
+import GradingReportModal, {
+  ReportContent,
+} from "@/components/GradingReportModal";
 import AuthModal from "@/components/AuthModal";
 import {
   authService,
@@ -64,10 +66,14 @@ import {
   STUDY_RESOURCES_DATA,
   getLocalizedQuestionExplanation,
 } from "@/data/studyData";
+import { analyzeAndLookupWord } from "@/utils/dictionary";
+import {
+  API_BASE_URL,
+  buildClientSideExamReport,
+  fetchWithTimeout,
+  shouldUseBackendApi,
+} from "@/utils/grading";
 import { speakMultilingualText, stopSpeech } from "@/utils/speech";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 type ActiveMenu = "home" | "exam" | "writing" | "vocab" | "study" | "report";
 type ExamSectionFilter = "ALL" | "LEVEL" | "LISTENING" | "READING" | "WRITING";
@@ -111,6 +117,7 @@ export default function TopikPlatformApp() {
     answers,
     setOptionAnswer,
     setTextAnswer,
+    hydrateFromStorage,
     initSessionData,
     tickTimer,
     lastSavedAt,
@@ -120,6 +127,7 @@ export default function TopikPlatformApp() {
     setSubmittingState,
     report,
     setReport,
+    setReportModalOpen,
   } = useExamStore();
 
   const [activeMenu, setActiveMenu] = useState<ActiveMenu>("home");
@@ -301,16 +309,26 @@ export default function TopikPlatformApp() {
     });
   }, [authSession, selectedLanguage, targetLevel]);
 
-  // 1. Initialize exam session on mount
+  // 0. Hydrate persisted preferences, answers, and last report safely
+  useEffect(() => {
+    hydrateFromStorage();
+  }, [hydrateFromStorage]);
+
+  // 1. Initialize exam session on mount (local-first; syncs backend only on localhost or configured API URL)
   useEffect(() => {
     let mounted = true;
     async function startSession() {
+      if (!shouldUseBackendApi()) return;
       try {
-        const res = await fetch(`${API_BASE_URL}/sessions`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ exam_type: "TOPIK_II" }),
-        });
+        const res = await fetchWithTimeout(
+          `${API_BASE_URL}/sessions`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ exam_type: "TOPIK_II" }),
+          },
+          1500
+        );
         if (!res.ok) return;
         const data = await res.json();
         if (mounted && data.session_id) {
@@ -345,6 +363,17 @@ export default function TopikPlatformApp() {
     const answerEntries = Object.entries(answers);
     if (answerEntries.length === 0) return;
 
+    const nowStr = new Date().toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+
+    if (!shouldUseBackendApi()) {
+      setSavingState(false, nowStr);
+      return;
+    }
+
     setSavingState(true);
     try {
       const payload = {
@@ -356,23 +385,18 @@ export default function TopikPlatformApp() {
           submitted_text: draft.submitted_text ?? null,
         })),
       };
-      const res = await fetch(`${API_BASE_URL}/answers`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        const nowStr = new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        });
-        setSavingState(false, nowStr);
-      } else {
-        setSavingState(false);
-      }
+      const res = await fetchWithTimeout(
+        `${API_BASE_URL}/answers`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+        1500
+      );
+      setSavingState(false, res.ok ? nowStr : nowStr);
     } catch {
-      setSavingState(false);
+      setSavingState(false, nowStr);
     }
   }, [sessionId, answers, remainingSeconds, setSavingState]);
 
@@ -383,7 +407,7 @@ export default function TopikPlatformApp() {
     return () => clearInterval(interval);
   }, [triggerAutoSave]);
 
-  // 4. Submit exam & open AI Grading Report
+  // 4. Submit exam & open AI Grading Report (with full client-side offline grading engine)
   const handleSubmitExam = async () => {
     setSubmittingState(true);
     const reportLang = selectedLanguage;
@@ -394,22 +418,47 @@ export default function TopikPlatformApp() {
         submitted_text: draft.submitted_text ?? null,
       }));
 
-      const res = await fetch(`${API_BASE_URL}/submit`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: sessionId || "fallback-local-session",
-          lang: reportLang,
-          answers: answerEntries,
-        }),
-      });
+      let reportData: SessionReportResponse | null = null;
+      if (shouldUseBackendApi()) {
+        try {
+          const res = await fetchWithTimeout(
+            `${API_BASE_URL}/submit`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                session_id: sessionId || "fallback-local-session",
+                lang: reportLang,
+                answers: answerEntries,
+              }),
+            },
+            4000
+          );
+          if (res.ok) {
+            reportData = await res.json();
+          }
+        } catch {
+          // Fallback to client-side grader below
+        }
+      }
 
-      if (res.ok) {
-        const reportData: SessionReportResponse = await res.json();
-        setReport(reportData);
-        setActiveMenu("report");
+      if (!reportData) {
+        reportData = buildClientSideExamReport(
+          questions,
+          answers,
+          targetLevel,
+          reportLang
+        );
+      }
 
-        if (authSession) {
+      setReport(reportData);
+      setActiveMenu("report");
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      if (authSession) {
+        try {
           await userDataService.saveExamRecord(authSession, {
             target_level: targetLevel,
             total_score: reportData.total_score,
@@ -420,60 +469,39 @@ export default function TopikPlatformApp() {
           });
           const updatedRecords = await userDataService.getExamRecords(authSession);
           setExamRecords(updatedRecords);
+        } catch {
+          // Keep local report even if cloud sync fails
         }
       }
-    } catch {
-      // Offline fallback report
     } finally {
       setSubmittingState(false);
     }
   };
 
-  // 5. Vocabulary Lab Search
+  // 5. Vocabulary Lab Search (morphological analyzer fallback works on all mobile/browser hosts)
   const handleVocabSearch = useCallback(
     async (queryWord: string) => {
       const q = queryWord.trim();
       if (!q) return;
       setVocabLoading(true);
       try {
-        const res = await fetch(
-          `${API_BASE_URL}/api/v1/vocabularies/tooltip?surface=${encodeURIComponent(
-            q
-          )}&lang=${encodeURIComponent(selectedLanguage)}`
-        );
-        if (res.ok) {
-          const data: VocabTooltipResponse = await res.json();
-          setVocabResult(data);
+        if (shouldUseBackendApi()) {
+          const res = await fetchWithTimeout(
+            `${API_BASE_URL}/api/v1/vocabularies/tooltip?surface=${encodeURIComponent(
+              q
+            )}&lang=${encodeURIComponent(selectedLanguage)}`,
+            {},
+            1500
+          );
+          if (res.ok) {
+            const data: VocabTooltipResponse = await res.json();
+            setVocabResult(data);
+            return;
+          }
         }
+        setVocabResult(analyzeAndLookupWord(q, selectedLanguage));
       } catch {
-        const foundCurated = CURATED_VOCAB_ITEMS.find(
-          (item) => item.lemma === q || q.includes(item.lemma)
-        );
-        const trans =
-          foundCurated?.translations[selectedLanguage] ||
-          foundCurated?.translations.en;
-        setVocabResult({
-          clicked_surface: q,
-          lemma: foundCurated?.lemma || q,
-          target_code: foundCurated?.target_code || "00000",
-          pronunciation: foundCurated?.pronunciation || q,
-          part_of_speech: foundCurated?.part_of_speech || "어휘",
-          word_grade: foundCurated?.word_grade || "중급",
-          senses: [
-            {
-              sense_order: 1,
-              korean_definition:
-                foundCurated?.korean_definition ||
-                `'${q}'에 대한 한국어기초사전 뜻풀이입니다.`,
-              translated_word: trans
-                ? trans[0]
-                : `${q} (${selectedLanguage.toUpperCase()})`,
-              translated_definition: trans
-                ? trans[1]
-                : `Multilingual definition for '${q}' in ${selectedLanguage.toUpperCase()}.`,
-            },
-          ],
-        });
+        setVocabResult(analyzeAndLookupWord(q, selectedLanguage));
       } finally {
         setVocabLoading(false);
       }
@@ -576,6 +604,9 @@ export default function TopikPlatformApp() {
     setSectionFilter(filter);
     setCurrentQuestionIndex(qIndex);
     setActiveMenu(menu);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   const startExamForTargetLevel = (lvl: number) => {
@@ -588,6 +619,9 @@ export default function TopikPlatformApp() {
     setSectionFilter("LEVEL");
     setCurrentQuestionIndex(firstMatchingIdx >= 0 ? firstMatchingIdx : 0);
     setActiveMenu("exam");
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   const firstWritingIndex = useMemo(() => {
@@ -617,35 +651,37 @@ export default function TopikPlatformApp() {
       {/* ================= GLOBAL TOP NAVIGATION BAR ================= */}
       {!isWorkspaceMode && (
         <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
-          <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3 px-6 py-3">
+          <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-2.5 px-3 py-2.5 sm:gap-3 sm:px-6 sm:py-3">
             {/* Left: Brand Logo */}
             <button
               type="button"
               onClick={() => setActiveMenu("home")}
-              className="flex items-center gap-3 text-left transition hover:opacity-90"
+              className="flex items-center gap-2.5 text-left transition hover:opacity-90 sm:gap-3"
             >
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-sm">
-                <GraduationCap className="h-6 w-6" />
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-sm sm:h-10 sm:w-10">
+                <GraduationCap className="h-5 w-5 sm:h-6 sm:w-6" />
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-lg font-extrabold tracking-tight text-slate-900">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <span className="truncate text-base font-extrabold tracking-tight text-slate-900 sm:text-lg">
                     Global TOPIK IBT
                   </span>
-                  <span className="rounded-md bg-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-700">
+                  <span className="shrink-0 rounded-md bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 sm:px-2 sm:text-[11px]">
                     {t.brandBadge}
                   </span>
                 </div>
-                <p className="text-xs text-slate-500">{t.brandSubtitle}</p>
+                <p className="hidden text-xs text-slate-500 sm:block">
+                  {t.brandSubtitle}
+                </p>
               </div>
             </button>
 
-            {/* Center: Main Feature Navigation Tabs */}
-            <nav className="flex flex-wrap items-center gap-1 rounded-2xl border border-slate-200 bg-slate-100/80 p-1">
+            {/* Center: Main Feature Navigation Tabs (horizontal strip on mobile, centered on xl) */}
+            <nav className="no-scrollbar order-3 flex w-full items-center gap-1 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-100/80 p-1 xl:order-2 xl:w-auto">
               <button
                 type="button"
                 onClick={() => setActiveMenu("home")}
-                className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition sm:text-sm ${
+                className={`flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold transition sm:px-3 sm:py-2 sm:text-sm ${
                   activeMenu === "home"
                     ? "bg-white text-blue-600 shadow-sm"
                     : "text-slate-600 hover:text-slate-900"
@@ -658,7 +694,7 @@ export default function TopikPlatformApp() {
               <button
                 type="button"
                 onClick={() => startMockExamAtQuestion(0, "exam", "ALL")}
-                className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 transition hover:text-slate-900 sm:text-sm"
+                className="flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-600 transition hover:text-slate-900 sm:px-3 sm:py-2 sm:text-sm"
               >
                 <FileText className="h-4 w-4" />
                 <span>
@@ -671,7 +707,7 @@ export default function TopikPlatformApp() {
                 onClick={() =>
                   startMockExamAtQuestion(firstQ53Index, "writing", "WRITING")
                 }
-                className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 transition hover:text-slate-900 sm:text-sm"
+                className="flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-600 transition hover:text-slate-900 sm:px-3 sm:py-2 sm:text-sm"
               >
                 <PenTool className="h-4 w-4" />
                 <span>{t.navWriting}</span>
@@ -680,7 +716,7 @@ export default function TopikPlatformApp() {
               <button
                 type="button"
                 onClick={() => setActiveMenu("vocab")}
-                className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition sm:text-sm ${
+                className={`flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold transition sm:px-3 sm:py-2 sm:text-sm ${
                   activeMenu === "vocab"
                     ? "bg-white text-blue-600 shadow-sm"
                     : "text-slate-600 hover:text-slate-900"
@@ -693,7 +729,7 @@ export default function TopikPlatformApp() {
               <button
                 type="button"
                 onClick={() => setActiveMenu("study")}
-                className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition sm:text-sm ${
+                className={`flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold transition sm:px-3 sm:py-2 sm:text-sm ${
                   activeMenu === "study"
                     ? "bg-white text-blue-600 shadow-sm"
                     : "text-slate-600 hover:text-slate-900"
@@ -710,7 +746,7 @@ export default function TopikPlatformApp() {
               <button
                 type="button"
                 onClick={() => setActiveMenu("report")}
-                className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition sm:text-sm ${
+                className={`flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold transition sm:px-3 sm:py-2 sm:text-sm ${
                   activeMenu === "report"
                     ? "bg-white text-blue-600 shadow-sm"
                     : "text-slate-600 hover:text-slate-900"
@@ -722,15 +758,15 @@ export default function TopikPlatformApp() {
             </nav>
 
             {/* Right: Language Dropdown Stack + Exam & Target Level Dropdown Stack Side-by-Side */}
-            <div className="flex flex-wrap items-center gap-2.5">
-              {/* 1. Language Selector Dropdown (Stack) */}
-              <div className="flex items-center gap-2 rounded-xl border-2 border-blue-200 bg-blue-50/60 px-3 py-1.5 text-xs font-semibold text-slate-700">
+            <div className="order-2 flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:justify-end sm:gap-2.5 xl:order-3">
+              {/* 1. Language Selector Dropdown (16px font on mobile prevents iOS Safari zoom) */}
+              <div className="flex min-w-0 items-center gap-1.5 rounded-xl border-2 border-blue-200 bg-blue-50/60 px-2.5 py-1 font-semibold text-slate-700 sm:gap-2 sm:px-3 sm:py-1.5">
                 <Globe className="h-4 w-4 shrink-0 text-blue-600" />
                 <select
                   aria-label="Select Language"
                   value={selectedLanguage}
                   onChange={(e) => setLanguage(e.target.value)}
-                  className="cursor-pointer bg-transparent font-bold text-slate-900 focus:outline-none"
+                  className="max-w-[115px] cursor-pointer truncate bg-transparent text-base font-bold text-slate-900 focus:outline-none sm:max-w-none sm:text-xs"
                 >
                   {SUPPORTED_LANGUAGES.map((lang) => (
                     <option key={lang.code} value={lang.code}>
@@ -740,42 +776,44 @@ export default function TopikPlatformApp() {
                 </select>
               </div>
 
-              {/* 2. Exam & Target Level (1급~6급) Selector Dropdown (Stack) right next to Language! */}
-              <div className="flex items-center gap-2 rounded-xl border-2 border-indigo-200 bg-indigo-50/70 px-3 py-1.5 text-xs font-semibold text-slate-700">
-                <Award className="h-4 w-4 shrink-0 text-indigo-600" />
-                <select
-                  aria-label="응시할 시험 및 목표 급수 선택"
-                  value={targetLevel}
-                  onChange={(e) => setTargetLevel(Number(e.target.value))}
-                  className="cursor-pointer bg-transparent font-bold text-indigo-950 focus:outline-none"
-                >
-                  <optgroup label="TOPIK I (초급 · 1~2급 · 200점 만점)">
-                    <option value={1}>
-                      TOPIK I · {formatLevelLabel(1)} 목표 (80{t.pointsOrAbove})
-                    </option>
-                    <option value={2}>
-                      TOPIK I · {formatLevelLabel(2)} 목표 (140{t.pointsOrAbove})
-                    </option>
-                  </optgroup>
-                  <optgroup label="TOPIK II (중·고급 · 3~6급 · 300점 만점)">
-                    <option value={3}>
-                      TOPIK II · {formatLevelLabel(3)} 목표 (120{t.pointsOrAbove})
-                    </option>
-                    <option value={4}>
-                      TOPIK II · {formatLevelLabel(4)} 목표 (150{t.pointsOrAbove})
-                    </option>
-                    <option value={5}>
-                      TOPIK II · {formatLevelLabel(5)} 목표 (190{t.pointsOrAbove})
-                    </option>
-                    <option value={6}>
-                      TOPIK II · {formatLevelLabel(6)} 목표 (230{t.pointsOrAbove})
-                    </option>
-                  </optgroup>
-                </select>
+              {/* 2. Exam & Target Level (1급~6급) Selector Dropdown right next to Language! */}
+              <div className="flex min-w-0 flex-1 items-center justify-between gap-1.5 rounded-xl border-2 border-indigo-200 bg-indigo-50/70 px-2.5 py-1 font-semibold text-slate-700 sm:flex-initial sm:gap-2 sm:px-3 sm:py-1.5">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <Award className="h-4 w-4 shrink-0 text-indigo-600" />
+                  <select
+                    aria-label="응시할 시험 및 목표 급수 선택"
+                    value={targetLevel}
+                    onChange={(e) => setTargetLevel(Number(e.target.value))}
+                    className="w-full min-w-0 cursor-pointer truncate bg-transparent text-base font-bold text-indigo-950 focus:outline-none sm:w-auto sm:text-xs"
+                  >
+                    <optgroup label="TOPIK I (초급 · 1~2급 · 200점 만점)">
+                      <option value={1}>
+                        TOPIK I · {formatLevelLabel(1)} 목표 (80{t.pointsOrAbove})
+                      </option>
+                      <option value={2}>
+                        TOPIK I · {formatLevelLabel(2)} 목표 (140{t.pointsOrAbove})
+                      </option>
+                    </optgroup>
+                    <optgroup label="TOPIK II (중·고급 · 3~6급 · 300점 만점)">
+                      <option value={3}>
+                        TOPIK II · {formatLevelLabel(3)} 목표 (120{t.pointsOrAbove})
+                      </option>
+                      <option value={4}>
+                        TOPIK II · {formatLevelLabel(4)} 목표 (150{t.pointsOrAbove})
+                      </option>
+                      <option value={5}>
+                        TOPIK II · {formatLevelLabel(5)} 목표 (190{t.pointsOrAbove})
+                      </option>
+                      <option value={6}>
+                        TOPIK II · {formatLevelLabel(6)} 목표 (230{t.pointsOrAbove})
+                      </option>
+                    </optgroup>
+                  </select>
+                </div>
                 <button
                   type="button"
                   onClick={() => startExamForTargetLevel(targetLevel)}
-                  className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-[11px] font-extrabold text-white shadow-sm transition hover:bg-indigo-700"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-[11px] font-extrabold text-white shadow-sm transition hover:bg-indigo-700"
                 >
                   <Play className="h-3 w-3 fill-current" />
                   <span>시험 시작</span>
@@ -786,7 +824,7 @@ export default function TopikPlatformApp() {
               <button
                 type="button"
                 onClick={() => setIsAuthModalOpen(true)}
-                className={`flex items-center gap-1.5 rounded-xl border-2 px-3 py-1.5 text-xs font-extrabold transition ${
+                className={`flex shrink-0 items-center gap-1.5 rounded-xl border-2 px-2.5 py-1.5 text-xs font-extrabold transition sm:px-3 ${
                   currentUser
                     ? "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
                     : "border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-slate-50"
@@ -795,7 +833,7 @@ export default function TopikPlatformApp() {
                 {currentUser ? (
                   <>
                     <User className="h-3.5 w-3.5 text-emerald-600" />
-                    <span className="max-w-[110px] truncate">
+                    <span className="max-w-[90px] truncate sm:max-w-[110px]">
                       {currentUser.email.split("@")[0]}
                     </span>
                   </>
@@ -815,9 +853,9 @@ export default function TopikPlatformApp() {
 
       {/* ================= VIEW 1: HOME LANDING & FEATURE HUB ================= */}
       {activeMenu === "home" && (
-        <main className="mx-auto w-full max-w-[1440px] flex-1 space-y-8 px-6 py-6">
+        <main className="mx-auto w-full max-w-[1440px] flex-1 space-y-6 px-3 py-4 sm:space-y-8 sm:px-6 sm:py-6">
           {/* 1. Hero Section (Directly at top of Home now that Exam/Level selector is in the top bar next to Language!) */}
-          <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 p-8 text-white shadow-xl sm:p-10">
+          <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 p-5 text-white shadow-xl sm:p-10">
             <div className="relative z-10 grid grid-cols-1 items-center gap-8 lg:grid-cols-12">
               <div className="space-y-4 lg:col-span-7">
                 <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-blue-200 backdrop-blur">
@@ -1166,21 +1204,21 @@ export default function TopikPlatformApp() {
       {/* ================= VIEW 2 & 3: IBT MOCK EXAM & WRITING WORKSPACE (ULTRA-COMPACT SINGLE BAR + NO-SCROLL SPLIT VIEW) ================= */}
       {(activeMenu === "exam" || activeMenu === "writing") && (
         <div className="flex flex-1 flex-col">
-          {/* Ultra-Slim Single-Line Top Bar */}
-          <div className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
-            <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-2 px-4 py-2">
+          {/* Ultra-Slim Top Bar (Sticky only on desktop lg+ so mobile screen space isn't blocked) */}
+          <div className="border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur lg:sticky lg:top-0 lg:z-40">
+            <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4">
               {/* Left: Back Home + Compact Section Filter Pills */}
-              <div className="flex flex-wrap items-center gap-1.5">
+              <div className="no-scrollbar flex w-full items-center gap-1.5 overflow-x-auto pb-0.5 sm:w-auto sm:pb-0">
                 <button
                   type="button"
                   onClick={() => setActiveMenu("home")}
-                  className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100"
+                  className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100"
                 >
                   <ArrowLeft className="h-3.5 w-3.5" />
                   <span>홈으로</span>
                 </button>
 
-                <div className="h-4 w-px bg-slate-200" />
+                <div className="h-4 w-px shrink-0 bg-slate-200" />
 
                 {(
                   [
@@ -1209,7 +1247,7 @@ export default function TopikPlatformApp() {
                         setCurrentQuestionIndex(firstMatch);
                       }
                     }}
-                    className={`rounded-lg px-2.5 py-1 text-xs font-bold transition ${
+                    className={`shrink-0 rounded-lg px-2.5 py-1 text-xs font-bold transition ${
                       sectionFilter === f.id
                         ? "bg-slate-900 text-white"
                         : "bg-slate-100 text-slate-600 hover:bg-slate-200"
@@ -1221,7 +1259,7 @@ export default function TopikPlatformApp() {
               </div>
 
               {/* Center: Compact Inline Question Selector Strip */}
-              <div className="flex max-w-full flex-1 items-center gap-1 overflow-x-auto px-1 py-0.5">
+              <div className="no-scrollbar flex w-full flex-1 items-center gap-1 overflow-x-auto px-0.5 py-0.5 lg:w-auto">
                 {filteredQuestionIndices.map(({ q, idx }) => {
                   const active = idx === currentQuestionIndex;
                   const done = isAnswered(q.question_id);
@@ -1260,7 +1298,7 @@ export default function TopikPlatformApp() {
               </div>
 
               {/* Right: Timer + Language Stack + Target Level Stack + Palette + Submit */}
-              <div className="flex flex-wrap items-center gap-1.5">
+              <div className="flex w-full flex-wrap items-center justify-between gap-1.5 sm:w-auto sm:justify-end">
                 <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1">
                   <Clock className="h-3.5 w-3.5 text-blue-600" />
                   <span className="font-mono text-xs font-extrabold text-slate-900">
@@ -1280,13 +1318,13 @@ export default function TopikPlatformApp() {
                 </div>
 
                 {/* Language Selector Dropdown */}
-                <div className="flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50/60 px-2 py-1 text-[11px] font-bold text-slate-800">
-                  <Globe className="h-3 w-3 text-blue-600" />
+                <div className="flex min-w-0 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50/60 px-2 py-1 font-bold text-slate-800">
+                  <Globe className="h-3 w-3 shrink-0 text-blue-600" />
                   <select
                     aria-label="Select Language"
                     value={selectedLanguage}
                     onChange={(e) => setLanguage(e.target.value)}
-                    className="cursor-pointer bg-transparent font-bold text-slate-900 focus:outline-none"
+                    className="max-w-[95px] cursor-pointer truncate bg-transparent text-base font-bold text-slate-900 focus:outline-none sm:max-w-none sm:text-[11px]"
                   >
                     {SUPPORTED_LANGUAGES.map((lang) => (
                       <option key={lang.code} value={lang.code}>
@@ -1297,13 +1335,13 @@ export default function TopikPlatformApp() {
                 </div>
 
                 {/* Exam & Target Level Selector Dropdown right next to Language! */}
-                <div className="flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50/70 px-2 py-1 text-[11px] font-bold text-indigo-950">
-                  <Award className="h-3 w-3 text-indigo-600" />
+                <div className="flex min-w-0 items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50/70 px-2 py-1 font-bold text-indigo-950">
+                  <Award className="h-3 w-3 shrink-0 text-indigo-600" />
                   <select
                     aria-label="응시 시험 및 목표 급수 선택"
                     value={targetLevel}
                     onChange={(e) => setTargetLevel(Number(e.target.value))}
-                    className="cursor-pointer bg-transparent font-bold text-indigo-950 focus:outline-none"
+                    className="max-w-[110px] cursor-pointer truncate bg-transparent text-base font-bold text-indigo-950 focus:outline-none sm:max-w-none sm:text-[11px]"
                   >
                     <optgroup label="TOPIK I (초급 · 1~2급)">
                       <option value={1}>TOPIK I · {formatLevelLabel(1)}</option>
@@ -1332,47 +1370,53 @@ export default function TopikPlatformApp() {
                   </button>
 
                   {isPaletteOpen && (
-                    <div className="absolute right-0 z-50 mt-2 w-80 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
-                      <div className="mb-2.5 flex items-center justify-between text-xs font-bold text-slate-700">
-                        <span>{t.paletteBtn}</span>
-                        <button
-                          type="button"
-                          onClick={() => setIsPaletteOpen(false)}
-                          className="text-slate-400 hover:text-slate-600"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                      <div className="grid max-h-72 grid-cols-3 gap-2 overflow-y-auto pr-1">
-                        {questions.map((q, idx) => (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40 bg-black/25 sm:bg-transparent"
+                        onClick={() => setIsPaletteOpen(false)}
+                      />
+                      <div className="fixed inset-x-3 top-16 z-50 mx-auto max-w-sm rounded-2xl border border-slate-200 bg-white p-4 shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80">
+                        <div className="mb-2.5 flex items-center justify-between text-xs font-bold text-slate-700">
+                          <span>{t.paletteBtn}</span>
                           <button
-                            key={q.question_id}
                             type="button"
-                            onClick={() => {
-                              setCurrentQuestionIndex(idx);
-                              setIsPaletteOpen(false);
-                            }}
-                            className={`rounded-xl border p-2 text-center text-xs font-bold ${
-                              idx === currentQuestionIndex
-                                ? "border-blue-600 bg-blue-600 text-white"
-                                : isAnswered(q.question_id)
-                                  ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-                                  : "border-slate-200 bg-slate-50 text-slate-700"
-                            }`}
+                            onClick={() => setIsPaletteOpen(false)}
+                            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                           >
-                            <div>
-                              {q.difficulty_level && q.difficulty_level <= 2
-                                ? "I"
-                                : "II"}{" "}
-                              · Q{q.question_number}
-                            </div>
-                            <div className="text-[10px] font-normal opacity-80">
-                              {q.section_name} ({q.difficulty_level}급)
-                            </div>
+                            ✕
                           </button>
-                        ))}
+                        </div>
+                        <div className="grid max-h-72 grid-cols-3 gap-2 overflow-y-auto pr-1">
+                          {questions.map((q, idx) => (
+                            <button
+                              key={q.question_id}
+                              type="button"
+                              onClick={() => {
+                                setCurrentQuestionIndex(idx);
+                                setIsPaletteOpen(false);
+                              }}
+                              className={`rounded-xl border p-2 text-center text-xs font-bold ${
+                                idx === currentQuestionIndex
+                                  ? "border-blue-600 bg-blue-600 text-white"
+                                  : isAnswered(q.question_id)
+                                    ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                                    : "border-slate-200 bg-slate-50 text-slate-700"
+                              }`}
+                            >
+                              <div>
+                                {q.difficulty_level && q.difficulty_level <= 2
+                                  ? "I"
+                                  : "II"}{" "}
+                                · Q{q.question_number}
+                              </div>
+                              <div className="text-[10px] font-normal opacity-80">
+                                {q.section_name} ({q.difficulty_level}급)
+                              </div>
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    </>
                   )}
                 </div>
 
@@ -1390,7 +1434,7 @@ export default function TopikPlatformApp() {
           </div>
 
           {/* 5:5 Split View Workspace — Locked Side-by-Side on Desktop so Problem/Graph and Wongoji are BOTH visible without scrolling up & down! */}
-          <main className="mx-auto grid w-full max-w-[1440px] flex-1 grid-cols-1 gap-4 px-4 py-3 lg:grid-cols-12 lg:items-start">
+          <main className="mx-auto grid w-full max-w-[1440px] flex-1 grid-cols-1 gap-4 px-3 py-3 sm:px-4 lg:grid-cols-12 lg:items-start">
             {/* LEFT PANE (50%): Visual Chart for Q53 + Audio Player + Clickable Passage */}
             <section className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:sticky lg:top-12 lg:col-span-6 lg:max-h-[calc(100vh-3.5rem)] lg:overflow-y-auto">
               <div className="space-y-3.5">
@@ -1768,7 +1812,7 @@ export default function TopikPlatformApp() {
 
       {/* ================= VIEW 4: MULTILINGUAL VOCABULARY & GRAMMAR LAB ================= */}
       {activeMenu === "vocab" && (
-        <main className="mx-auto w-full max-w-[1440px] flex-1 space-y-8 px-6 py-8">
+        <main className="mx-auto w-full max-w-[1440px] flex-1 space-y-6 px-3 py-5 sm:space-y-8 sm:px-6 sm:py-8">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <span className="text-xs font-bold uppercase tracking-wider text-emerald-600">
@@ -1812,7 +1856,7 @@ export default function TopikPlatformApp() {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="면역력이, 양극화, 함양하다, 경신하다, 급증하다..."
-                    className="w-full rounded-xl border border-slate-300 py-2.5 pl-10 pr-4 text-sm focus:border-emerald-500 focus:outline-none"
+                    className="w-full rounded-xl border border-slate-300 py-2.5 pl-10 pr-4 text-base focus:border-emerald-500 focus:outline-none sm:text-sm"
                   />
                 </div>
                 <button
@@ -2031,7 +2075,7 @@ export default function TopikPlatformApp() {
                 </h3>
               </div>
 
-              <div className="flex items-center gap-1.5 rounded-xl bg-slate-100 p-1">
+              <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-slate-100 p-1">
                 {(["ALL", "초급", "중급", "고급"] as const).map((grade) => (
                   <button
                     key={grade}
@@ -2132,6 +2176,9 @@ export default function TopikPlatformApp() {
                         onClick={() => {
                           setSearchQuery(w.lemma);
                           handleVocabSearch(w.lemma);
+                          if (typeof window !== "undefined") {
+                            window.scrollTo({ top: 0, behavior: "smooth" });
+                          }
                         }}
                         className="text-xs font-bold text-emerald-700 hover:underline"
                       >
@@ -2148,7 +2195,7 @@ export default function TopikPlatformApp() {
 
       {/* ================= VIEW 5: 100% AD-FREE COMPLETE MINI-LECTURES & STUDY HUB ================= */}
       {activeMenu === "study" && (
-        <main className="mx-auto w-full max-w-[1440px] flex-1 space-y-8 px-6 py-8">
+        <main className="mx-auto w-full max-w-[1440px] flex-1 space-y-6 px-3 py-5 sm:space-y-8 sm:px-6 sm:py-8">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <span className="text-xs font-extrabold uppercase tracking-wider text-blue-600">
@@ -2548,7 +2595,7 @@ export default function TopikPlatformApp() {
 
       {/* ================= VIEW 6: SCORE & AI GRADING REPORT PAGE ================= */}
       {activeMenu === "report" && (
-        <main className="mx-auto w-full max-w-[1440px] flex-1 space-y-6 px-6 py-8">
+        <main className="mx-auto w-full max-w-[1440px] flex-1 space-y-6 px-3 py-5 sm:px-6 sm:py-8">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
@@ -2559,7 +2606,17 @@ export default function TopikPlatformApp() {
               </h2>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {report && (
+                <button
+                  type="button"
+                  onClick={() => setReportModalOpen(true)}
+                  className="flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100"
+                >
+                  <FileCheck2 className="h-4 w-4" />
+                  <span>성적표 팝업 크게 보기</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleSubmitExam}
@@ -2580,12 +2637,12 @@ export default function TopikPlatformApp() {
           </div>
 
           {!report ? (
-            <div className="rounded-3xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+            <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm sm:p-12">
               <FileCheck2 className="mx-auto h-12 w-12 text-indigo-500" />
               <h3 className="mt-4 text-lg font-bold text-slate-900">
                 {t.card4Desc}
               </h3>
-              <div className="mt-6 flex justify-center gap-3">
+              <div className="mt-6 flex flex-wrap justify-center gap-3">
                 <button
                   type="button"
                   onClick={() => startMockExamAtQuestion(0, "exam", "ALL")}
@@ -2603,49 +2660,21 @@ export default function TopikPlatformApp() {
               </div>
             </div>
           ) : (
-            <div className="space-y-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-                <div className="rounded-2xl bg-indigo-50 p-4">
-                  <span className="text-xs font-semibold text-indigo-700">
-                    Total Score
-                  </span>
-                  <div className="mt-1 text-2xl font-extrabold text-indigo-950">
-                    {report.total_score} / {report.max_total_score}
-                  </div>
-                </div>
-                <div className="rounded-2xl bg-sky-50 p-4">
-                  <span className="text-xs font-semibold text-sky-700">
-                    Listening
-                  </span>
-                  <div className="mt-1 text-2xl font-bold text-sky-900">
-                    {report.listening_score}
-                  </div>
-                </div>
-                <div className="rounded-2xl bg-blue-50 p-4">
-                  <span className="text-xs font-semibold text-blue-700">
-                    Reading
-                  </span>
-                  <div className="mt-1 text-2xl font-bold text-blue-900">
-                    {report.reading_score}
-                  </div>
-                </div>
-                <div className="rounded-2xl bg-purple-50 p-4">
-                  <span className="text-xs font-semibold text-purple-700">
-                    Writing AI
-                  </span>
-                  <div className="mt-1 text-2xl font-bold text-purple-900">
-                    {report.writing_score}
-                  </div>
-                </div>
-                <div className="rounded-2xl bg-amber-50 p-4">
-                  <span className="text-xs font-semibold text-amber-800">
-                    Target Level
-                  </span>
-                  <div className="mt-1 text-2xl font-extrabold text-amber-900">
-                    {formatLevelLabel(targetLevel)} ({selectedLevelCutoff}+)
-                  </div>
-                </div>
+            <div className="space-y-6 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-xs font-bold text-amber-950">
+                <span>
+                  🎯 목표 급수: {formatLevelLabel(targetLevel)} (합격 기준{" "}
+                  {selectedLevelCutoff}점 이상)
+                </span>
+                <span className="rounded-lg bg-white px-2.5 py-1 text-indigo-700 ring-1 ring-amber-200">
+                  듣기 {report.listening_score} · 읽기 {report.reading_score} · 쓰기{" "}
+                  {report.writing_score}
+                </span>
               </div>
+              <ReportContent
+                report={report}
+                selectedLanguage={selectedLanguage}
+              />
             </div>
           )}
           {currentUser && examRecords.length > 0 && (

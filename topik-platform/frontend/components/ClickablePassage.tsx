@@ -5,88 +5,12 @@ import { BookMarked, Loader2, Sparkles, Volume2, X } from "lucide-react";
 import { useExamStore } from "@/store/useExamStore";
 import { SUPPORTED_LANGUAGES, VocabTooltipResponse } from "@/types/exam";
 import { speakMultilingualText } from "@/utils/speech";
-import { CURATED_VOCAB_ITEMS } from "@/data/studyData";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
-
-const CLIENT_FALLBACK_DICT: Record<
-  string,
-  {
-    lemma: string;
-    pronunciation: string;
-    pos: string;
-    grade: string;
-    ko: string;
-    trans: Record<string, [string, string]>;
-  }
-> = {
-  그러나: {
-    lemma: "그러나",
-    pronunciation: "그러나",
-    pos: "부사",
-    grade: "초급",
-    ko: "앞의 내용과 상반되는 내용을 이끌 때 쓰는 접속 부사.",
-    trans: {
-      en: ["however; but", "Conjunctive adverb introducing contrasting content."],
-      vi: ["tuy nhiên, nhưng", "Phó từ liên kết dẫn dắt nội dung trái ngược."],
-      zh: ["但是，然而", "用于引出与前面内容相反的转折副词。"],
-      ja: ["しかし。だが", "前の内容と相反する内容を導く接続副詞。"],
-    },
-  },
-  무조건: {
-    lemma: "무조건",
-    pronunciation: "무조건",
-    pos: "부사",
-    grade: "중급",
-    ko: "아무런 조건이나 단서가 없이.",
-    trans: {
-      en: ["unconditionally; blindly", "Without any conditions or provisos."],
-      vi: ["vô điều kiện", "Không có bất kỳ điều kiện nào."],
-      zh: ["无条件地，盲目地", "没有任何条件或前提。"],
-      ja: ["無条件に。むやみに", "何の条件や前提もなしに。"],
-    },
-  },
-  해롭다: {
-    lemma: "해롭다",
-    pronunciation: "해롭따",
-    pos: "형용사",
-    grade: "중급",
-    ko: "해가 되거나 나쁜 영향을 끼치는 데가 있다.",
-    trans: {
-      en: ["harmful; detrimental", "Causing harm or having a negative effect."],
-      vi: ["có hại", "Gây hại hoặc có ảnh hưởng xấu."],
-      zh: ["有害", "造成危害或产生不良影响。"],
-      ja: ["有害だ。害になる", "害になったり悪い影響を及ぼしたりする。"],
-    },
-  },
-  면역력: {
-    lemma: "면역력",
-    pronunciation: "며녕녁",
-    pos: "명사",
-    grade: "고급",
-    ko: "외부에서 들어온 병원균에 저항하는 힘.",
-    trans: {
-      en: ["immunity", "The power to resist external pathogens."],
-      vi: ["sức đề kháng, miễn dịch", "Khả năng chống lại mầm bệnh từ bên ngoài."],
-      zh: ["免疫力", "抵抗从外部侵入的病原菌的能力。"],
-      ja: ["免疫力", "外部から入った病原菌に抵抗する力。"],
-    },
-  },
-  숙면: {
-    lemma: "숙면",
-    pronunciation: "숭면",
-    pos: "명사",
-    grade: "고급",
-    ko: "깊이 든 잠.",
-    trans: {
-      en: ["deep sleep; sound sleep", "A deep, restful sleep."],
-      vi: ["giấc ngủ sâu", "Giấc ngủ say và sâu."],
-      zh: ["熟睡，酣睡", "深沉的睡眠。"],
-      ja: ["熟睡", "深く眠ること。"],
-    },
-  },
-};
+import { analyzeAndLookupWord } from "@/utils/dictionary";
+import {
+  API_BASE_URL,
+  fetchWithTimeout,
+  shouldUseBackendApi,
+} from "@/utils/grading";
 
 interface ClickablePassageProps {
   text: string;
@@ -110,87 +34,23 @@ export default function ClickablePassage({ text, title }: ClickablePassageProps)
   const fetchTooltip = async (surface: string, lang: string) => {
     setIsLoading(true);
     try {
-      const res = await fetch(
-        `${API_BASE_URL}/api/v1/vocabularies/tooltip?surface=${encodeURIComponent(
-          surface
-        )}&lang=${encodeURIComponent(lang)}`
-      );
-      if (!res.ok) throw new Error("Backend tooltip fetch failed");
-      const data: VocabTooltipResponse = await res.json();
-      setTooltipData(data);
-    } catch {
-      const cleaned = surface.replace(/^[^\w가-힣]+|[^\w가-힣]+$/g, "");
-      const stripped = cleaned.replace(
-        /(에서부터|으로부터|이라도|에게서|한테서|에서는|으로는|에서도|까지도|조차도|마저도|에서|에게|한테|으로|부터|까지|조차|마저|처럼|만큼|보다|하고|이나|이라|든지|은|는|이|가|을|를|의|에|로|와|과|도|만)$/,
-        ""
-      );
-      const curatedMatch = CURATED_VOCAB_ITEMS.find(
-        (item) =>
-          item.lemma === cleaned ||
-          item.lemma === stripped ||
-          (stripped.length >= 2 && item.lemma.startsWith(stripped))
-      );
-      const matched = CLIENT_FALLBACK_DICT[cleaned] || CLIENT_FALLBACK_DICT[stripped];
-      if (curatedMatch) {
-        const pair =
-          curatedMatch.translations[lang] || curatedMatch.translations.en;
-        setTooltipData({
-          clicked_surface: surface,
-          lemma: curatedMatch.lemma,
-          target_code: "10000",
-          pronunciation: curatedMatch.pronunciation,
-          part_of_speech: curatedMatch.part_of_speech,
-          word_grade: curatedMatch.word_grade,
-          is_mock: true,
-          senses: [
-            {
-              sense_order: 1,
-              korean_definition: `${curatedMatch.korean_definition} (예: ${curatedMatch.example_ko})`,
-              translated_word: pair?.[0] || curatedMatch.lemma,
-              translated_definition: pair?.[1] || curatedMatch.korean_definition,
-            },
-          ],
-        });
-      } else if (matched) {
-        const pair = matched.trans[lang] || matched.trans.en;
-        setTooltipData({
-          clicked_surface: surface,
-          lemma: matched.lemma,
-          target_code: "10001",
-          pronunciation: matched.pronunciation,
-          part_of_speech: matched.pos,
-          word_grade: matched.grade,
-          is_mock: true,
-          senses: [
-            {
-              sense_order: 1,
-              korean_definition: matched.ko,
-              translated_word: pair[0],
-              translated_definition: pair[1],
-            },
-          ],
-        });
-      } else {
-        setTooltipData({
-          clicked_surface: surface,
-          lemma: cleaned || surface,
-          target_code: "99999",
-          pronunciation: cleaned || surface,
-          part_of_speech: "어휘",
-          word_grade: "중급",
-          is_mock: true,
-          senses: [
-            {
-              sense_order: 1,
-              korean_definition: `'${cleaned || surface}'의 한국어기초사전 뜻풀이입니다.`,
-              translated_word: `${cleaned || surface} (${lang.toUpperCase()})`,
-              translated_definition: `Multilingual dictionary definition for '${
-                cleaned || surface
-              }' in ${lang.toUpperCase()}.`,
-            },
-          ],
-        });
+      if (shouldUseBackendApi()) {
+        const res = await fetchWithTimeout(
+          `${API_BASE_URL}/api/v1/vocabularies/tooltip?surface=${encodeURIComponent(
+            surface
+          )}&lang=${encodeURIComponent(lang)}`,
+          {},
+          1500
+        );
+        if (res.ok) {
+          const data: VocabTooltipResponse = await res.json();
+          setTooltipData(data);
+          return;
+        }
       }
+      setTooltipData(analyzeAndLookupWord(surface, lang));
+    } catch {
+      setTooltipData(analyzeAndLookupWord(surface, lang));
     } finally {
       setIsLoading(false);
     }
@@ -201,6 +61,7 @@ export default function ClickablePassage({ text, title }: ClickablePassageProps)
     if (activeToken) {
       fetchTooltip(activeToken, selectedLanguage);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLanguage]);
 
   const handleWordClick = (
@@ -215,7 +76,7 @@ export default function ClickablePassage({ text, title }: ClickablePassageProps)
 
     if (containerRect) {
       const top = btnRect.bottom - containerRect.top + 8;
-      const maxLeft = Math.max(0, containerRect.width - 340);
+      const maxLeft = Math.max(0, containerRect.width - 360);
       const left = Math.min(
         Math.max(0, btnRect.left - containerRect.left),
         maxLeft
@@ -227,6 +88,11 @@ export default function ClickablePassage({ text, title }: ClickablePassageProps)
     fetchTooltip(token, selectedLanguage);
   };
 
+  const closeTooltip = () => {
+    setActiveToken(null);
+    setTooltipData(null);
+  };
+
   const currentLangMeta =
     SUPPORTED_LANGUAGES.find((l) => l.code === selectedLanguage) ||
     SUPPORTED_LANGUAGES[0];
@@ -236,25 +102,30 @@ export default function ClickablePassage({ text, title }: ClickablePassageProps)
   return (
     <div ref={containerRef} className="relative">
       {title && (
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
             {title}
           </span>
           <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-medium text-blue-700">
-            <Sparkles className="h-3 w-3" />
-            어절을 클릭하면 {currentLangMeta.flag} {currentLangMeta.label} 사전이 표시됩니다
+            <Sparkles className="h-3 w-3 shrink-0" />
+            <span>
+              어절을 탭/클릭하면 {currentLangMeta.flag} {currentLangMeta.label} 사전 표시
+            </span>
           </span>
         </div>
       )}
 
-      <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-5 text-[16px] leading-8 text-slate-800 shadow-inner">
+      <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-[15px] leading-8 text-slate-800 shadow-inner sm:p-5 sm:text-[16px]">
         {lines.map((line, lineIdx) => {
           if (!line.trim()) {
             return <div key={lineIdx} className="h-2" />;
           }
           const tokens = line.split(/\s+/);
           return (
-            <p key={lineIdx} className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
+            <p
+              key={lineIdx}
+              className="flex flex-wrap items-baseline gap-x-1 gap-y-1 sm:gap-x-1.5"
+            >
               {tokens.map((token, tokenIdx) => {
                 const isMarker = /^\([가-하]\)$|^\[.*\]$|^-\s*$|^\d+\.$/.test(
                   token
@@ -275,10 +146,10 @@ export default function ClickablePassage({ text, title }: ClickablePassageProps)
                     key={`${lineIdx}-${tokenIdx}`}
                     type="button"
                     onClick={(e) => handleWordClick(e, token)}
-                    className={`rounded-md px-1 py-0.5 text-left transition ${
+                    className={`rounded-md px-1.5 py-1 text-left text-[15px] transition sm:px-1 sm:py-0.5 sm:text-[16px] ${
                       isSelected
                         ? "bg-blue-600 font-semibold text-white shadow-sm"
-                        : "hover:bg-blue-100/80 hover:text-blue-900"
+                        : "hover:bg-blue-100/80 hover:text-blue-900 active:bg-blue-200"
                     }`}
                   >
                     {token}
@@ -290,15 +161,29 @@ export default function ClickablePassage({ text, title }: ClickablePassageProps)
         })}
       </div>
 
-      {/* Floating Multilingual Dictionary Tooltip Popover */}
+      {/* Mobile backdrop for bottom-sheet dictionary tooltip */}
       {activeToken && (
         <div
-          style={{ top: anchorPos.top, left: anchorPos.left }}
-          className="absolute z-40 w-[330px] rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl ring-1 ring-black/5 sm:w-[360px]"
+          aria-hidden="true"
+          onClick={closeTooltip}
+          className="fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-[1px] sm:hidden"
+        />
+      )}
+
+      {/* Responsive Dictionary Tooltip: Bottom Sheet on Mobile, Popover on Tablet/Desktop */}
+      {activeToken && (
+        <div
+          style={
+            {
+              "--popover-top": `${anchorPos.top}px`,
+              "--popover-left": `${anchorPos.left}px`,
+            } as React.CSSProperties
+          }
+          className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-50 max-h-[75dvh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl ring-1 ring-black/5 sm:absolute sm:inset-auto sm:left-[var(--popover-left)] sm:top-[var(--popover-top)] sm:z-40 sm:max-h-none sm:w-[360px]"
         >
           <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2.5">
             <div className="flex items-center gap-2">
-              <BookMarked className="h-4 w-4 text-blue-600" />
+              <BookMarked className="h-4 w-4 shrink-0 text-blue-600" />
               <span className="text-xs font-semibold text-slate-500">
                 국립국어원 한국어기초사전 ({currentLangMeta.flag}{" "}
                 {currentLangMeta.code.toUpperCase()})
@@ -306,11 +191,9 @@ export default function ClickablePassage({ text, title }: ClickablePassageProps)
             </div>
             <button
               type="button"
-              onClick={() => {
-                setActiveToken(null);
-                setTooltipData(null);
-              }}
-              className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              aria-label="사전 창 닫기"
+              onClick={closeTooltip}
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
             >
               <X className="h-4 w-4" />
             </button>
@@ -382,9 +265,9 @@ export default function ClickablePassage({ text, title }: ClickablePassageProps)
                             "ko"
                           )
                         }
-                        className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700 hover:bg-blue-100"
+                        className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1.5 text-[11px] font-bold text-blue-700 hover:bg-blue-100"
                       >
-                        <Volume2 className="h-3 w-3" />
+                        <Volume2 className="h-3.5 w-3.5" />
                         <span>🇰🇷 한국어 듣기</span>
                       </button>
 
@@ -399,9 +282,9 @@ export default function ClickablePassage({ text, title }: ClickablePassageProps)
                               selectedLanguage
                             )
                           }
-                          className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 hover:bg-emerald-100"
+                          className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[11px] font-bold text-emerald-700 hover:bg-emerald-100"
                         >
-                          <Volume2 className="h-3 w-3" />
+                          <Volume2 className="h-3.5 w-3.5" />
                           <span>
                             {currentLangMeta.flag} {currentLangMeta.label} 해설 듣기
                           </span>
@@ -416,7 +299,7 @@ export default function ClickablePassage({ text, title }: ClickablePassageProps)
                 <span>클릭 어절: &ldquo;{tooltipData.clicked_surface}&rdquo;</span>
                 {tooltipData.is_mock && (
                   <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
-                    Dev Mock Fallback
+                    형태소 기본형 분석
                   </span>
                 )}
               </div>
