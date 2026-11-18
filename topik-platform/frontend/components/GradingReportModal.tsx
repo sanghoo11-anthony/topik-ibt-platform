@@ -124,18 +124,33 @@ export function ReportContent({
               {/* Multiple Choice Explanation */}
               {!isWriting && (
                 <div className="mt-3 space-y-2 text-sm">
-                  <div className="flex flex-wrap gap-4 text-xs font-semibold">
-                    <span className="text-slate-600">
-                      선택한 답안:{" "}
-                      <strong className="text-slate-900">
-                        {q.submitted_option_number != null
-                          ? `${q.submitted_option_number}번`
-                          : "미선택"}
-                      </strong>
-                    </span>
-                    <span className="text-emerald-700">
-                      정답: <strong>{q.correct_answer_text}번</strong>
-                    </span>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold">
+                    <div className="flex flex-wrap gap-4">
+                      <span className="text-slate-600">
+                        선택한 답안:{" "}
+                        <strong className="text-slate-900">
+                          {q.submitted_option_number != null
+                            ? `${q.submitted_option_number}번`
+                            : "미선택"}
+                        </strong>
+                      </span>
+                      <span className="text-emerald-700">
+                        정답: <strong>{q.correct_answer_text}번</strong>
+                      </span>
+                    </div>
+
+                    {q.section_name === "LISTENING" && q.passage_text && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          speakMultilingualText(q.passage_text || "", "ko")
+                        }
+                        className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm hover:bg-blue-700"
+                      >
+                        <Volume2 className="h-3.5 w-3.5" />
+                        <span>🎧 남녀 대화 음원 다시 듣기</span>
+                      </button>
+                    )}
                   </div>
 
                   {q.explanations && (

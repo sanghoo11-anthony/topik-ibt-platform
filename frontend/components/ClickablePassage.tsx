@@ -4,7 +4,12 @@ import React, { useEffect, useRef, useState } from "react";
 import { BookMarked, Loader2, Sparkles, Volume2, X } from "lucide-react";
 import { useExamStore } from "@/store/useExamStore";
 import { SUPPORTED_LANGUAGES, VocabTooltipResponse } from "@/types/exam";
-import { speakMultilingualText } from "@/utils/speech";
+import {
+  SpeechPlaybackStatus,
+  cleanTextForNaturalSpeech,
+  speakMultilingualText,
+  subscribeSpeechStatus,
+} from "@/utils/speech";
 import { analyzeAndLookupWord } from "@/utils/dictionary";
 import {
   API_BASE_URL,
@@ -28,8 +33,22 @@ export default function ClickablePassage({ text, title }: ClickablePassageProps)
     top: 0,
     left: 0,
   });
+  const [speechStatus, setSpeechStatus] = useState<SpeechPlaybackStatus>({
+    isPlaying: false,
+    speaker: null,
+    label: null,
+    turnIndex: null,
+    totalTurns: 0,
+    text: null,
+  });
 
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    return subscribeSpeechStatus((status) => {
+      setSpeechStatus(status);
+    });
+  }, []);
 
   const fetchTooltip = async (surface: string, lang: string) => {
     setIsLoading(true);
@@ -117,9 +136,121 @@ export default function ClickablePassage({ text, title }: ClickablePassageProps)
 
       <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-[15px] leading-8 text-slate-800 shadow-inner sm:p-5 sm:text-[16px]">
         {lines.map((line, lineIdx) => {
-          if (!line.trim()) {
+          const trimmedLine = line.trim();
+          if (!trimmedLine) {
             return <div key={lineIdx} className="h-2" />;
           }
+
+          if (/^\[듣기 대본[^\]]*\]$/.test(trimmedLine)) {
+            return (
+              <div
+                key={lineIdx}
+                className="inline-flex items-center rounded-md bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-700"
+              >
+                {trimmedLine}
+              </div>
+            );
+          }
+
+          const speakerMatch = trimmedLine.match(
+            /^(여자\s*\(강연자\)|남자\s*\(강연자\)|여자|여성|남자|남성|강연자)\s*:\s*(.*)$/
+          );
+
+          if (speakerMatch) {
+            const rawLabel = speakerMatch[1].replace(/\s+/g, "");
+            const bodyText = speakerMatch[2];
+            const isFemale =
+              rawLabel.startsWith("여자") || rawLabel.startsWith("여성");
+            const isMale =
+              rawLabel.startsWith("남자") || rawLabel.startsWith("남성");
+            const expectedRole = isFemale
+              ? "female"
+              : isMale
+                ? "male"
+                : "narrator";
+            const normalizedBody = cleanTextForNaturalSpeech(bodyText, "ko");
+            const isCurrentTurnSpeaking =
+              speechStatus.isPlaying &&
+              speechStatus.speaker === expectedRole &&
+              speechStatus.text === normalizedBody;
+
+            const cardStyle = isFemale
+              ? isCurrentTurnSpeaking
+                ? "border-rose-400 bg-rose-50/90 ring-2 ring-rose-300 shadow-sm"
+                : "border-rose-200/80 bg-white/90"
+              : isMale
+                ? isCurrentTurnSpeaking
+                  ? "border-blue-400 bg-blue-50/90 ring-2 ring-blue-300 shadow-sm"
+                  : "border-blue-200/80 bg-white/90"
+                : isCurrentTurnSpeaking
+                  ? "border-indigo-400 bg-indigo-50/90 ring-2 ring-indigo-300 shadow-sm"
+                  : "border-indigo-200/80 bg-white/90";
+
+            const badgeStyle = isFemale
+              ? "bg-rose-100 text-rose-800"
+              : isMale
+                ? "bg-blue-100 text-blue-800"
+                : "bg-indigo-100 text-indigo-800";
+
+            const speakerIcon = isFemale ? "👩" : isMale ? "👨" : "🎙️";
+            const bodyTokens = bodyText.split(/\s+/).filter(Boolean);
+
+            return (
+              <div
+                key={lineIdx}
+                className={`rounded-xl border p-3 transition ${cardStyle}`}
+              >
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-extrabold ${badgeStyle}`}
+                  >
+                    <span>{speakerIcon}</span>
+                    <span>{rawLabel}</span>
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => speakMultilingualText(trimmedLine, "ko")}
+                    className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-bold transition active:scale-95 ${
+                      isCurrentTurnSpeaking
+                        ? isFemale
+                          ? "bg-rose-600 text-white shadow-sm"
+                          : isMale
+                            ? "bg-blue-600 text-white shadow-sm"
+                            : "bg-indigo-600 text-white shadow-sm"
+                        : "bg-slate-100 text-slate-700 hover:bg-blue-100 hover:text-blue-800"
+                    }`}
+                  >
+                    <Volume2 className="h-3.5 w-3.5" />
+                    <span>
+                      {isCurrentTurnSpeaking ? "🔊 발화 중..." : "대사 듣기"}
+                    </span>
+                  </button>
+                </div>
+
+                <p className="flex flex-wrap items-baseline gap-x-1 gap-y-1 sm:gap-x-1.5">
+                  {bodyTokens.map((token, tokenIdx) => {
+                    const isSelected = activeToken === token;
+                    return (
+                      <button
+                        key={`${lineIdx}-${tokenIdx}`}
+                        type="button"
+                        onClick={(e) => handleWordClick(e, token)}
+                        className={`rounded-md px-1.5 py-1 text-left text-[15px] transition sm:px-1 sm:py-0.5 sm:text-[16px] ${
+                          isSelected
+                            ? "bg-blue-600 font-semibold text-white shadow-sm"
+                            : "hover:bg-blue-100/80 hover:text-blue-900 active:bg-blue-200"
+                        }`}
+                      >
+                        {token}
+                      </button>
+                    );
+                  })}
+                </p>
+              </div>
+            );
+          }
+
           const tokens = line.split(/\s+/);
           return (
             <p

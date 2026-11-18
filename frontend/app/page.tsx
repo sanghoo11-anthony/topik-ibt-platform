@@ -75,7 +75,13 @@ import {
   fetchWithTimeout,
   shouldUseBackendApi,
 } from "@/utils/grading";
-import { speakMultilingualText, stopSpeech } from "@/utils/speech";
+import {
+  SpeechPlaybackStatus,
+  preloadDialogueAudio,
+  speakMultilingualText,
+  stopSpeech,
+  subscribeSpeechStatus,
+} from "@/utils/speech";
 
 type ActiveMenu = "home" | "exam" | "writing" | "vocab" | "study" | "report";
 type ExamSectionFilter =
@@ -162,6 +168,14 @@ export default function TopikPlatformApp() {
 
   // Listening & Lecture TTS state
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [speechStatus, setSpeechStatus] = useState<SpeechPlaybackStatus>({
+    isPlaying: false,
+    speaker: null,
+    label: null,
+    turnIndex: null,
+    totalTurns: 0,
+    text: null,
+  });
   const [speechRate, setSpeechRate] = useState<number>(1.0);
   const [showListeningScript, setShowListeningScript] = useState(true);
   const [selectedMiniLectureId, setSelectedMiniLectureId] =
@@ -242,6 +256,18 @@ export default function TopikPlatformApp() {
     ? answers[currentQuestion.question_id] || {}
     : {};
 
+  // Subscribe to global speech playback status (speaker gender, active turn)
+  useEffect(() => {
+    const unsubscribe = subscribeSpeechStatus((status) => {
+      setSpeechStatus(status);
+      setIsSpeaking(status.isPlaying);
+      if (!status.isPlaying) {
+        setIsPlayingLecture(false);
+      }
+    });
+    return unsubscribe;
+  }, []);
+
   // Stop speech when changing questions or leaving exam
   useEffect(() => {
     stopSpeech();
@@ -249,16 +275,17 @@ export default function TopikPlatformApp() {
     setIsPlayingLecture(false);
   }, [currentQuestionIndex, activeMenu]);
 
-  const handlePlayListeningAudio = (scriptText: string) => {
-    const cleanedScript = scriptText
-      .replace(/^\[.*?\]\n?/gm, "")
-      .replace(/여자(\(강연자\))?:/g, "여자. ")
-      .replace(/남자:/g, "남자. ")
-      .trim();
+  // Pre-warm neural MP3 turns for the active question so mobile playback starts gap-free
+  useEffect(() => {
+    if (activeMenu === "exam" && currentQuestion?.passage_text) {
+      preloadDialogueAudio(currentQuestion.passage_text, "ko");
+    }
+  }, [currentQuestion, activeMenu]);
 
-    if (!cleanedScript) return;
+  const handlePlayListeningAudio = (scriptText: string) => {
+    if (!scriptText.trim()) return;
     setIsSpeaking(true);
-    speakMultilingualText(cleanedScript, "ko", speechRate, () => {
+    speakMultilingualText(scriptText, "ko", speechRate, () => {
       setIsSpeaking(false);
     });
   };
@@ -1721,7 +1748,7 @@ export default function TopikPlatformApp() {
                               TOPIK 한국어 듣기 음성 플레이어
                             </div>
                             <div className="text-[11px] text-blue-700">
-                              클릭 즉시 한국어 남녀 대화·강연 음성이 재생됩니다
+                              실제 남녀 한국어 성우의 자연스러운 대화·강연 음성이 재생됩니다
                             </div>
                           </div>
                         </div>
@@ -1787,6 +1814,44 @@ export default function TopikPlatformApp() {
                             )}
                           </button>
                         </div>
+                      </div>
+
+                      {/* Live Speaker Indicator Bar */}
+                      <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-blue-200/70 pt-2">
+                        {speechStatus.isPlaying &&
+                        speechStatus.speaker === "female" ? (
+                          <span className="inline-flex animate-pulse items-center gap-1.5 rounded-lg bg-rose-100 px-2.5 py-1 text-[11px] font-extrabold text-rose-800 ring-1 ring-rose-300">
+                            <span>👩</span>
+                            <span>
+                              여자 대화 음성 발화 중 (자연스러운 여성 성우 톤)
+                            </span>
+                          </span>
+                        ) : speechStatus.isPlaying &&
+                          speechStatus.speaker === "male" ? (
+                          <span className="inline-flex animate-pulse items-center gap-1.5 rounded-lg bg-blue-100 px-2.5 py-1 text-[11px] font-extrabold text-blue-900 ring-1 ring-blue-300">
+                            <span>👨</span>
+                            <span>
+                              남자 대화 음성 발화 중 (자연스러운 남성 성우 톤)
+                            </span>
+                          </span>
+                        ) : speechStatus.isPlaying &&
+                          speechStatus.speaker === "narrator" ? (
+                          <span className="inline-flex animate-pulse items-center gap-1.5 rounded-lg bg-indigo-100 px-2.5 py-1 text-[11px] font-extrabold text-indigo-900 ring-1 ring-indigo-300">
+                            <span>🎙️</span>
+                            <span>성우 지시문·강연 음성 발화 중</span>
+                          </span>
+                        ) : (
+                          <>
+                            <span className="inline-flex items-center gap-1 rounded-lg bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-700 ring-1 ring-rose-200">
+                              <span>👩</span>
+                              <span>여자: 자연스러운 여성 성우</span>
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700 ring-1 ring-blue-200">
+                              <span>👨</span>
+                              <span>남자: 자연스러운 남성 성우</span>
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}
